@@ -127,7 +127,7 @@
       "state": "stale-authored-prose"
     },
     {
-      "authored_body_sha256": "sha256:ad2fdb465e488f353b42675dab3827584c880241f588702fac85944040868175",
+      "authored_body_sha256": "sha256:41e553e59115f1aedcccb57a69fc1e694aec7d47668359921099df7efb3abcad",
       "covers_sources": [
         "extensions/background-tasks.ts",
         "src/core/update-check.ts",
@@ -834,7 +834,7 @@
     "image": "https://raw.githubusercontent.com/ismailsaleekh/pi-background-tasks/main/logo.png",
     "name": "pi-background-tasks",
     "type": "module",
-    "version": "2.6.0"
+    "version": "2.7.0"
   },
   "public_surface_ids": [
     "command:bg",

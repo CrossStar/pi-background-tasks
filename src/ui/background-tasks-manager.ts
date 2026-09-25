@@ -192,6 +192,8 @@ export class BackgroundTasksManager implements Component {
   private get commandRows(): number {
     return Math.max(1, (this.options.getHeight?.() ?? 24) - 7);
   }
+  private logBounds: { x: number; y: number; width: number; height: number } | undefined;
+  private previewLogTop = 0;
   private mode: 'list' | 'detail' = 'list';
   private failedOnly = false;
   private explicitFilter = false;
@@ -269,6 +271,19 @@ export class BackgroundTasksManager implements Component {
 
   invalidate(): void {
     this.tui.requestRender();
+  }
+
+  // Structural event type keeps older Pi versions compatible; newer TUI hosts
+  // dispatch normalized, component-local mouse events in fullscreen mode.
+  handleMouse(event: { type: string; x: number; y: number; wheelDelta?: number }): { handled: boolean; render: boolean } | undefined {
+    const bounds = this.logBounds;
+    const delta = event.wheelDelta;
+    if (this.disposed || this.searchInput || this.commandTask || event.type !== 'wheel' ||
+      delta === undefined || !Number.isFinite(delta) || delta === 0 || !bounds ||
+      event.x < bounds.x || event.x >= bounds.x + bounds.width ||
+      event.y < bounds.y || event.y >= bounds.y + bounds.height) return undefined;
+    this.scrollDetail(Math.sign(delta) * Math.max(1, Math.round(Math.abs(delta))));
+    return { handled: true, render: true };
   }
 
   handleInput(data: string): void {
@@ -368,6 +383,7 @@ export class BackgroundTasksManager implements Component {
   }
 
   render(width: number): string[] {
+    this.logBounds = undefined;
     const boxWidth = Math.max(2, Math.min(width, 160));
     this.renderWidth = boxWidth;
     if (this.commandTask) return this.renderCommand(boxWidth);
@@ -786,6 +802,7 @@ export class BackgroundTasksManager implements Component {
       ` ${task.command}`,
     ];
     if (task.error) lines.push(this.theme.fg('error', ` Error: ${task.error}`));
+    this.previewLogTop = lines.length + 1;
     lines.push(...this.renderOutputBox(Math.max(4, width - 2)));
     if (this.searchMessage) lines.push(` ${this.searchMessage}`);
     return lines;
@@ -824,6 +841,10 @@ export class BackgroundTasksManager implements Component {
       : lightBlue(' '.repeat(inner));
     const lines = [top, row(header), row(subtitleLine), row()];
     const bodyLimit = this.options.getHeight ? Math.max(1, this.options.getHeight() - 7) : body.length;
+    if (this.logBounds) {
+      const visibleEnd = 4 + (body.length > bodyLimit ? bodyLimit - 1 : body.length);
+      this.logBounds.height = Math.max(0, Math.min(this.logBounds.height, visibleEnd - this.logBounds.y));
+    }
     const visibleBody = body.length > bodyLimit
       ? [...body.slice(0, Math.max(0, bodyLimit - 1)), body[body.length - 1] ?? ''] : body;
     for (const line of visibleBody) lines.push(row(line));
@@ -922,6 +943,14 @@ export class BackgroundTasksManager implements Component {
       }
     }
     const preview = this.preview(tasks[this.selectedIndex], width >= 100 ? width - 42 : width - 2);
+    if (tasks[this.selectedIndex]) {
+      this.logBounds = {
+        x: width >= 100 ? 43 : 3,
+        y: 4 + this.previewLogTop + (width >= 100 ? 0 : body.length + 1),
+        width: Math.max(0, width - (width >= 100 ? 47 : 8)),
+        height: this.outputRows,
+      };
+    }
     if (width >= 100) {
       const listWidth = 38;
       for (let i = 0; i < Math.max(body.length, preview.length); i++) {
@@ -983,6 +1012,7 @@ export class BackgroundTasksManager implements Component {
     }
     if (task.error) body.push(` ${this.theme.fg('error', `Error: ${task.error}`)}`);
     body.push('', ` ${this.theme.fg('toolTitle', 'Output tail:')}`);
+    this.logBounds = { x: 3, y: 5 + body.length, width: Math.max(0, width - 6), height: this.outputRows };
     body.push(...this.renderOutputBox(width - 4));
     if (this.searchMessage) body.push(` ${this.searchMessage}`);
     if (this.searchInput) body.push(...this.searchInput.render(Math.max(1, width - 4)));

@@ -89,6 +89,10 @@ Detail view:
 - `c`/`C`: show output path.
 - close keys are the same as list view.
 
+## Mouse wheel
+
+In a Pi fullscreen TUI that supports normalized mouse events, hover over the log body in either preview or detail and scroll the wheel. Scrolling up pauses live following; reaching the bottom resumes it. The task list and headers do not intercept wheel events. In older Pi versions or modes where the terminal owns scrollback, use the keyboard controls above.
+
 ## Detail output tail semantics
 
 The preview and detail view read a UI-only tail buffer of 128 KiB once per second while following. They display up to 12 output lines, adapting to terminal height. Scrolling up pauses live following and freezes the buffer so the view stays stable. The paused status counts new newline bytes; a `+` means more new bytes remain to scan. Full-log search uses bounded reads, including content older than the tail buffer, and shows the matched byte offset with a bounded excerpt. File modification age describes last observed output, not whether a process is hung. Scrolling/pageing back to the bottom resumes follow mode; `r` also resumes follow and refreshes. This UI tail is larger than the model-facing log cap and is separate from [`bg_logs`](../tools/bg_logs.md).

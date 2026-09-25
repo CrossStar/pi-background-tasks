@@ -2087,22 +2087,23 @@ function surfaceRows(codeFacts) {
 
 function buildReadmePackageFacts(codeFacts) {
   return mdTable(
-    ['Fact', 'Value'],
+    ['项目', '内容'],
     [
-      ['Package', `\`${codeFacts.package.name}\``],
-      ['Version', `\`${codeFacts.package.version}\``],
-      ['Node engine', `\`${codeFacts.package.engines.node ?? 'unspecified'}\``],
-      ['Pi entrypoints', codeFacts.package.entrypoints.map((entrypoint) => `\`${entrypoint}\``).join(', ')],
-      ['Package image', codeFacts.package.image ? `[logo.png](${codeFacts.package.image})` : 'not declared'],
+      ['包名', `\`${codeFacts.package.name}\``],
+      ['版本', `\`${codeFacts.package.version}\``],
+      ['Node 版本要求', `\`${codeFacts.package.engines.node ?? '未声明'}\``],
+      ['Pi 扩展入口', codeFacts.package.entrypoints.map((entrypoint) => `\`${entrypoint}\``).join(', ')],
+      ['项目图标', '[logo.png](logo.png)'],
     ],
   );
 }
 
 function buildReadmeSurfaceSummary(codeFacts) {
-  const counts = PUBLIC_KINDS.map((kind) => [kind, String((codeFacts.public_surfaces[kind] ?? []).length)]);
+  const labels = { command: '命令', tool: '工具', shortcut: '快捷键', renderer: '消息渲染器', eventbus: '事件接口', workflow: '工作流' };
+  const counts = PUBLIC_KINDS.map((kind) => [labels[kind] ?? kind, String((codeFacts.public_surfaces[kind] ?? []).length)]);
   const commandNames = codeFacts.public_surfaces.command.map((x) => `\`/${x.name}\``).join(', ');
   const toolNames = codeFacts.public_surfaces.tool.map((x) => `\`${x.name}\``).join(', ');
-  return `${mdTable(['Surface kind', 'Count'], counts)}\n\nPublic commands: ${commandNames}.\n\nPublic tools: ${toolNames}.\n\nFull owner map and generated contracts live in [docs/INDEX.md](docs/INDEX.md).`;
+  return `${mdTable(['接口类型', '数量'], counts)}\n\n公开命令：${commandNames}。\n\n公开工具：${toolNames}。\n\n完整接口与源码归属见 [docs/INDEX.md](docs/INDEX.md)。`;
 }
 
 function buildIndexBody(codeFacts, docsModel, coverage) {

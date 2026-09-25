@@ -175,6 +175,44 @@ function assertWidth(lines: string[], width: number) {
 }
 
 void describe('BackgroundTasksManager component', () => {
+  void it('scrolls only the hovered log body in wide, narrow and detail layouts', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'bg-wheel-'));
+    const output = join(root, 'log');
+    await writeFile(output, Array.from({ length: 40 }, (_, i) => `wheel-row-${String(i).padStart(2, '0')}`).join('\n') + '\n');
+    try {
+      for (const layout of ['wide', 'narrow', 'detail'] as const) {
+        const width = layout === 'narrow' ? 70 : 120;
+        const h = manager({ getHeight: () => 40, ...(layout === 'detail' ? { initialTaskId: 'b12345678' } : {}) }, [task({ outputAbsPath: output })]);
+        try {
+          const deadline = performance.now() + 5000;
+          let lines: string[];
+          do {
+            lines = h.instance.render(width).map(stripAnsi);
+            if (lines.some((line) => line.includes('wheel-row-39'))) break;
+            assert.ok(performance.now() < deadline, 'log preview should load');
+            await new Promise((resolve) => setTimeout(resolve, 10));
+          } while (true);
+          const y = lines.findIndex((line) => line.includes('wheel-row-39'));
+          const x = lines[y]?.indexOf('wheel-row-39') ?? -1;
+          assert.equal(h.instance.handleMouse({ type: 'wheel', x: 0, y, wheelDelta: -3 }), undefined);
+          assert.equal(h.instance.handleMouse({ type: 'wheel', x, y: 1, wheelDelta: -3 }), undefined);
+          assert.deepEqual(h.instance.handleMouse({ type: 'wheel', x, y, wheelDelta: -3 }), { handled: true, render: true });
+          let text = stripAnsi(h.instance.render(width).join('\n'));
+          assert.match(text, /paused/);
+          assert.match(text, /wheel-row-25/);
+          assert.doesNotMatch(text, /wheel-row-39/);
+          h.instance.handleMouse({ type: 'wheel', x, y, wheelDelta: 100 });
+          text = stripAnsi(h.instance.render(width).join('\n'));
+          assert.match(text, /following tail/);
+          assert.match(text, /wheel-row-39/);
+          h.instance.handleInput('v');
+          h.instance.render(width);
+          assert.equal(h.instance.handleMouse({ type: 'wheel', x, y, wheelDelta: -3 }), undefined);
+        } finally { h.instance.dispose(); }
+      }
+    } finally { await rm(root, { recursive: true, force: true }); }
+  });
+
   void it('refreshes tqdm carriage-return frames instead of showing stale concatenated progress', async () => {
     const root = await mkdtemp(join(tmpdir(), 'bg-progress-'));
     const output = join(root, 'log');
@@ -413,7 +451,11 @@ void describe('BackgroundTasksManager component', () => {
       const tasks = [task({ outputAbsPath, bytesWritten: 24 })];
       const h = manager({ initialTaskId: 'b12345678' }, tasks);
       try {
-        await new Promise((resolve) => setTimeout(resolve, 20));
+        const deadline = performance.now() + 5000;
+        while (!stripAnsi(h.instance.render(100).join('\n')).includes('component-tail')) {
+          assert.ok(performance.now() < deadline, 'detail output should finish loading');
+          await new Promise((resolve) => setTimeout(resolve, 10));
+        }
         let text = stripAnsi(h.instance.render(100).join('\n'));
         assert.match(text, /bg: Component Task/);
         assert.match(text, /component-tail/);

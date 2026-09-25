@@ -367,6 +367,29 @@ void describe('BackgroundTaskRegistry', () => {
     }
   });
 
+  void it('restores terminal shell-task history from durable metadata', async () => {
+    const h = await createHarness({ platform: 'linux' });
+    try {
+      const { task, child } = await startFakeTask(h, 'Recoverable History');
+      child.writeStdout('persisted-history');
+      child.close(0);
+      await waitFor(() => task.status === 'completed', 'recoverable task completion');
+
+      const restored = new BackgroundTaskRegistry({
+        sendCompletionNotification: () => undefined,
+        logger: { error: (...args: unknown[]) => h.errors.push(args) },
+      });
+      assert.equal(await restored.restoreTerminalTasks(h.ctx), 1);
+      const recovered = restored.resolveTask(task.id);
+      assert.equal(recovered.status, 'completed');
+      assert.equal(recovered.name, 'Recoverable History');
+      assert.match((await restored.getTaskLogs(recovered, 1000, false)).text, /persisted-history/);
+      assert.equal(await restored.restoreTerminalTasks(h.ctx), 0, 'recovery must be idempotent');
+    } finally {
+      await cleanup(h.root);
+    }
+  });
+
   void it('uses explicit isAgent to decide Pi telemetry wrapping', async () => {
     assert.equal(commandMayLaunchPiAgent('pi -p hello'), true);
     assert.equal(
@@ -929,6 +952,79 @@ void describe('BackgroundTaskRegistry', () => {
     }
   });
 
+  void it('defers terminal publication and notification until a detached host rebinds', async () => {
+    const published: BgTaskSnapshot[] = [];
+    const delivered: CompletionNotificationMessage[] = [];
+    const h = await createHarness({
+      publishTerminal: (task) => published.push(task),
+      sendCompletionNotification: (message) => delivered.push(message),
+    });
+    try {
+      const { task, child } = await startFakeTask(h, 'Reload Gap');
+      h.registry.detachHost();
+      child.close(0);
+      await waitFor(() => task.status === 'completed', 'detached task completion');
+      assert.equal(published.length, 0);
+      assert.equal(delivered.length, 0);
+      assert.equal(task.notified, false);
+
+      h.registry.rebindHost({
+        onChange: () => undefined,
+        publishTerminal: (snapshot) => published.push(snapshot),
+        sendCompletionNotification: (message) => delivered.push(message),
+      });
+      assert.equal(published.length, 1);
+      assert.equal(delivered.length, 1);
+      assert.equal(task.notified, true);
+      await waitFor(
+        () => JSON.parse(readFileSync(task.metadataAbsPath, 'utf8')).notified === true,
+        'rebound notification metadata',
+      );
+    } finally {
+      await cleanup(h.root);
+    }
+  });
+
+  void it('keeps delivery pending across a gated reload and retains pending tasks', async () => {
+    const published: BgTaskSnapshot[] = [];
+    const delivered: CompletionNotificationMessage[] = [];
+    const h = await createHarness({ maxRecentTasks: 1 });
+    let releaseGate = () => {};
+    const gate = new Promise<void>((resolve) => { releaseGate = resolve; });
+    try {
+      const first = await startFakeTask(h, 'Gated Reload');
+      first.task.terminalPublicationGate = gate;
+      first.child.close(0);
+      await waitFor(() => first.task.status === 'completed', 'gated terminal metadata');
+      h.registry.detachHost();
+      h.registry.rebindHost({
+        onChange: () => {},
+        publishTerminal: (task) => published.push(task),
+        sendCompletionNotification: (message) => delivered.push(message),
+      });
+      assert.equal(published.length, 0);
+      assert.equal(delivered.length, 0);
+      h.registry.detachHost();
+      releaseGate();
+      const second = await startFakeTask(h, 'Detached Retention');
+      second.child.close(0);
+      await waitFor(() => second.task.status === 'completed', 'second terminal');
+      assert.equal(published.length, 0);
+      assert.equal(h.registry.allTasks().length, 2, 'pending deliveries survive retention');
+      h.registry.rebindHost({
+        onChange: () => {},
+        publishTerminal: (task) => published.push(task),
+        sendCompletionNotification: (message) => delivered.push(message),
+      });
+      await waitFor(() => published.length === 2 && delivered.length === 2, 'both terminal deliveries');
+      assert.equal(new Set(published.map((task) => task.id)).size, 2);
+      assert.equal(h.registry.allTasks().length, 1);
+    } finally {
+      releaseGate();
+      await cleanup(h.root);
+    }
+  });
+
   void it('publishes terminal snapshots exactly once after durable metadata', async () => {
     const terminals: BgTaskSnapshot[] = [];
     const metadataStatuses: unknown[] = [];
@@ -1015,12 +1111,10 @@ void describe('BackgroundTaskRegistry', () => {
       await rm(join(metadataFailure.cwd, '.pi'), { recursive: true, force: true });
       child.close(0, null);
       await waitFor(() => task.status === 'failed', 'metadata failure task completion');
-      await waitFor(
-        () => metadataFailure.notifications.length === 1,
-        'notification despite metadata failure',
-      );
-      await waitFor(() => metadataFailure.errors.length > 0, 'metadata failure log');
-      assert.equal(task.notified, true);
+      await waitFor(() => metadataFailure.errors.flat().join(' ').includes('failed to update notification metadata'), 'metadata retries exhausted');
+      assert.equal(metadataFailure.notifications.length, 0, 'no durable receipt without durable metadata');
+      assert.equal(task.notified, false);
+      assert.notEqual(task.terminalPublished, true);
       assert.match(task.error ?? '', /Terminal metadata write failed/);
       assert.match(
         metadataFailure.errors.flat().join(' '),

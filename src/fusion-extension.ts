@@ -92,6 +92,7 @@ interface FusionProgressDetails {
 interface ActiveFusionRun {
   controller: AbortController;
   settled: Promise<void>;
+  registered: boolean;
 }
 
 export interface FusionExtensionDependencies {
@@ -776,7 +777,7 @@ export function registerFusionExtension(pi: ExtensionAPI, deps: FusionExtensionD
     const settled = new Promise<void>((resolve) => {
       resolveSettled = resolve;
     });
-    const active: ActiveFusionRun = { controller, settled };
+    const active: ActiveFusionRun = { controller, settled, registered: false };
     activeRuns.add(active);
     const unlink = linkSignal(request.signal, controller);
     const assertActive = () => {
@@ -816,7 +817,12 @@ export function registerFusionExtension(pi: ExtensionAPI, deps: FusionExtensionD
         profile: request.profile,
         signal: controller.signal,
         onProgress: request.onProgress,
-        onReady,
+        onReady: async (ready) => {
+          assertActive();
+          await onReady?.(ready);
+          assertActive();
+          active.registered = true;
+        },
       };
       if ('ledger' in built) runInput.contextLedger = built.ledger;
       return await orchestrator.run(runInput);
@@ -1273,7 +1279,13 @@ export function registerFusionExtension(pi: ExtensionAPI, deps: FusionExtensionD
     pi.setActiveTools(next);
   });
 
-  pi.on('session_shutdown', async (_event, ctx) => {
+  pi.on('session_shutdown', async (event, ctx) => {
+    if (event.reason === 'reload') {
+      const pending = [...activeRuns].filter((run) => !run.registered);
+      for (const run of pending) run.controller.abort();
+      await Promise.all(pending.map((run) => run.settled));
+      return;
+    }
     shuttingDown = true;
     lifecycleGeneration += 1;
     const runs = [...activeRuns];

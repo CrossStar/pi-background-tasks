@@ -119,8 +119,8 @@ function findSpillReceiptPath(context: Context): string | undefined {
     if (!Array.isArray(content)) continue;
     for (const part of content) {
       if (part.type !== 'text') continue;
-      const match = /spill\/[A-Za-z0-9._-]+\.bin/.exec(part.text);
-      if (match) return match[0];
+      const match = /spill(?:\/|\\+)[A-Za-z0-9._-]+\.bin/.exec(part.text);
+      if (match) return match[0].replace(/\\+/g, '/');
     }
   }
   return undefined;

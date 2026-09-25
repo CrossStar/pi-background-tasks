@@ -112,11 +112,15 @@ function run(
   cwd: string,
   env: NodeJS.ProcessEnv = process.env,
 ): string {
-  const result = spawnSync(command, [...args], {
+  const npmExecPath = command === 'npm' ? env['npm_execpath'] : undefined;
+  const result = spawnSync(npmExecPath ? process.execPath : command, npmExecPath ? [npmExecPath, ...args] : [...args], {
     cwd,
     encoding: 'utf8',
     env: { ...env, NPM_CONFIG_CACHE: env['NPM_CONFIG_CACHE'] ?? '/tmp/pi-npm-cache' },
   });
+  if (result.error !== undefined) {
+    throw new Error(`${command} could not start in ${cwd}: ${result.error.message}`, { cause: result.error });
+  }
   if (result.status !== 0) {
     throw new Error(
       `${command} ${args.join(' ')} failed in ${cwd}\n${result.stdout}\n${result.stderr}`,
@@ -829,6 +833,10 @@ async function verifyCurrentHostFusionUsage(): Promise<string> {
   } finally {
     await rm(temp, { recursive: true, force: true });
   }
+}
+
+if (process.platform === 'win32') {
+  throw new Error('The full compatibility gate requires Linux or macOS: Fusion child fixtures intercept POSIX PATH. Run this gate in Linux CI or WSL; Windows integration is covered by test:windows.');
 }
 
 verifyTypeBoxPeerPosture();

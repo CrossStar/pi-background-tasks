@@ -369,7 +369,7 @@ async function harness(options: HarnessOptions = {}): Promise<Harness> {
   assert.equal(session.model?.provider, 'pi-bg-fusion');
   assert.equal(session.model?.id, 'current-model');
   session.setThinkingLevel('low');
-  await session.extensionRunner.emit({ type: 'session_start', reason: 'startup' });
+  await session.bindExtensions({ onError: (error) => assert.fail(error.error) });
   return { session, cwd, root, agentDir, fakeLogPath: fake.logPath };
 }
 
@@ -784,9 +784,9 @@ void describe('fusion SDK integration', { concurrency: false }, () => {
     }
   });
 
-  void it('BUG-182 returns exact merged text with host-valid usage and excludes the active tool-call leaf', async (t) => {
+  void it('BUG-182 preserves merged text, projection and once-only usage across real reloads', async (t) => {
     if (skipWin32FusionChildPathFixture(t)) return;
-    const h = await harness();
+    const h = await harness({ fakeDelayMs: 1000 });
     try {
       const user: UserMessage = {
         role: 'user',
@@ -839,6 +839,7 @@ void describe('fusion SDK integration', { concurrency: false }, () => {
         h.session.extensionRunner.createContext(),
       );
       assert.ok(isFusionLaunchDetails(launch.details));
+      await h.session.reload();
       const retrieved = await retrieveFusionLaunch(h, launch);
       const result = retrieved.result;
       const resultText = result.content[0]?.type === 'text' ? result.content[0].text : '';
@@ -860,6 +861,7 @@ void describe('fusion SDK integration', { concurrency: false }, () => {
       });
       const task = retrieved.launchDetails['task'];
       assert.ok(isRecord(task));
+      await h.session.reload();
       const resultTool = h.session.getToolDefinition('bg_result');
       assert.ok(resultTool);
       const repeated = await resultTool.execute(
@@ -1014,7 +1016,8 @@ void describe('fusion SDK integration', { concurrency: false }, () => {
       assert.ok(isRecord(task));
       const taskId = stringField(task, 'id');
       await waitForInvocationCount(h.fakeLogPath, 3);
-      await h.session.extensionRunner.emit({ type: 'session_shutdown', reason: 'reload' });
+      await h.session.reload();
+      await h.session.extensionRunner.emit({ type: 'session_shutdown', reason: 'quit' });
       const resultTool = h.session.getToolDefinition('bg_result');
       assert.ok(resultTool);
       const terminal = await resultTool.execute(

@@ -1513,6 +1513,52 @@ console.log(JSON.stringify({ type: "message_end", message: secondMessage }));
     }
   });
 
+  void it('hands running tasks and terminal history across extension reload', async () => {
+    const { session } = await harness();
+    const statuses: Array<string | undefined> = [];
+    const notifications: UiNotification[] = [];
+    await session.bindExtensions({
+      uiContext: makeStatusUi(session.extensionRunner.getUIContext(), statuses, notifications),
+    });
+    try {
+      const completedLaunch = await exec(session, 'bg_run', {
+        isAgent: false,
+        name: 'SDK Reload Complete',
+        command: `node -e ${JSON.stringify("process.stdout.write('reload-history')")}`,
+        notifyOnCompletion: false,
+        triggerOnCompletion: false,
+      });
+      const completed = await wait(session, taskFromResult(completedLaunch).id);
+      assert.equal(completed.status, 'completed');
+
+      const runningLaunch = await exec(session, 'bg_run', {
+        isAgent: false,
+        name: 'SDK Reload Running',
+        command: `node -e ${JSON.stringify("setTimeout(() => process.stdout.write('reload-live'), 10000)")}`,
+        notifyOnCompletion: false,
+        triggerOnCompletion: false,
+      });
+      const runningId = taskFromResult(runningLaunch).id;
+
+      await session.reload();
+
+      const completedAfterReload = await exec(session, 'bg_status', { taskId: completed.id });
+      assert.equal(firstTask(completedAfterReload).status, 'completed');
+      const logsAfterReload = await exec(session, 'bg_logs', {
+        taskId: completed.id,
+        maxBytes: 1000,
+      });
+      assert.match(resultText(logsAfterReload), /reload-history/);
+
+      const runningAfterReload = await exec(session, 'bg_status', { taskId: runningId });
+      assert.equal(firstTask(runningAfterReload).status, 'running');
+      await exec(session, 'bg_kill', { taskId: runningId });
+    } finally {
+      await session.extensionRunner.emit({ type: 'session_shutdown', reason: 'quit' });
+      session.dispose();
+    }
+  });
+
   void it('cleans up multiple running tasks on shutdown', async () => {
     const { session } = await harness();
     const one = await exec(session, 'bg_run', {

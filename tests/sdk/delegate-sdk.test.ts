@@ -1,4 +1,4 @@
-import { describe, it, afterEach } from 'node:test';
+import { describe, it, afterEach, type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync } from 'node:fs';
 import { chmod, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
@@ -26,6 +26,14 @@ import { DELEGATE_INLINE_ANSWER_BYTES } from '../../src/core/delegate/budget.js'
  */
 const extensionPath = resolve('extensions/background-tasks.ts');
 const roots: string[] = [];
+
+function skipWin32DelegateChildPathFixture(t: TestContext): boolean {
+  if (process.platform !== 'win32') return false;
+  t.skip(
+    'PATH-based fake Pi delegate child interception is not applicable on win32 because production resolves the Pi package instead of PATH by design',
+  );
+  return true;
+}
 
 interface Harness {
   session: AgentSession;
@@ -348,7 +356,8 @@ void describe('bg_delegate and bg_result public surface', { concurrency: false }
   void it(
     'returns a launch receipt immediately and completes the whole loop',
     { timeout: 30_000 },
-    async () => {
+    async (t) => {
+      if (skipWin32DelegateChildPathFixture(t)) return;
       const h = await harness('commit');
       try {
         h.session.sessionManager.appendMessage({
@@ -422,7 +431,8 @@ void describe('bg_delegate and bg_result public surface', { concurrency: false }
   void it(
     'gives the child its own session and strips parent identity',
     { timeout: 30_000 },
-    async () => {
+    async (t) => {
+      if (skipWin32DelegateChildPathFixture(t)) return;
       const h = await harness('commit');
       try {
         const launch = await runTool(h, 'bg_delegate', { name: 'Isolation', prompt: 'check' });
@@ -455,7 +465,8 @@ void describe('bg_delegate and bg_result public surface', { concurrency: false }
   void it(
     'enables ambient extension discovery explicitly while retaining all other child restrictions',
     { timeout: 30_000 },
-    async () => {
+    async (t) => {
+      if (skipWin32DelegateChildPathFixture(t)) return;
       const h = await harness('commit');
       try {
         const launch = await runTool(h, 'bg_delegate', {
@@ -505,7 +516,8 @@ void describe('bg_delegate and bg_result public surface', { concurrency: false }
   void it(
     'returns a typed not-ready result while the delegate is running',
     { timeout: 30_000 },
-    async () => {
+    async (t) => {
+      if (skipWin32DelegateChildPathFixture(t)) return;
       const h = await harness('commit');
       try {
         const launch = await runTool(h, 'bg_delegate', { name: 'Not ready', prompt: 'slow work' });
@@ -528,7 +540,8 @@ void describe('bg_delegate and bg_result public surface', { concurrency: false }
   void it(
     'reports a child that exits cleanly without committing',
     { timeout: 30_000 },
-    async () => {
+    async (t) => {
+      if (skipWin32DelegateChildPathFixture(t)) return;
       const h = await harness('no-commit');
       try {
         const launch = await runTool(h, 'bg_delegate', { name: 'No commit', prompt: 'do nothing' });
@@ -548,7 +561,8 @@ void describe('bg_delegate and bg_result public surface', { concurrency: false }
   void it(
     'detects a corrupted answer and never returns its bytes',
     { timeout: 30_000 },
-    async () => {
+    async (t) => {
+      if (skipWin32DelegateChildPathFixture(t)) return;
       const h = await harness('corrupt-answer');
       try {
         const launch = await runTool(h, 'bg_delegate', { name: 'Corrupt', prompt: 'x' });
@@ -564,7 +578,8 @@ void describe('bg_delegate and bg_result public surface', { concurrency: false }
     },
   );
 
-  void it('rejects an answer produced on a different route', { timeout: 30_000 }, async () => {
+  void it('rejects an answer produced on a different route', { timeout: 30_000 }, async (t) => {
+    if (skipWin32DelegateChildPathFixture(t)) return;
     const h = await harness('route-drift');
     try {
       const launch = await runTool(h, 'bg_delegate', { name: 'Drift', prompt: 'x' });
@@ -582,7 +597,8 @@ void describe('bg_delegate and bg_result public surface', { concurrency: false }
   void it(
     'degrades an oversized answer to an artifact reference and never truncates it',
     { timeout: 30_000 },
-    async () => {
+    async (t) => {
+      if (skipWin32DelegateChildPathFixture(t)) return;
       const h = await harness('huge-answer');
       try {
         const launch = await runTool(h, 'bg_delegate', { name: 'Huge', prompt: 'x' });

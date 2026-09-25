@@ -36,7 +36,12 @@ import {
   readPackageInfo,
   type FetchLatestVersionOptions,
 } from './core/update-check.js';
-import { BackgroundTaskRegistry } from './core/registry.js';
+import {
+  BackgroundTaskRegistry,
+  acquireProcessRegistry,
+  releaseProcessRegistry,
+  type BackgroundTaskContext,
+} from './core/registry.js';
 import {
   installBackgroundTaskExtensionApi,
   type BackgroundTaskExtensionService,
@@ -55,8 +60,8 @@ import { registerDelegateExtension } from './delegate-extension.js';
  * Scope:
  * - Explicit background shell jobs only: /bg and bg_run spawn commands directly.
  * - No Ctrl+B support for backgrounding an already-running built-in bash tool.
- * - No detached/restart reattachment: live child processes belong to this Pi
- *   extension runtime and are killed on session shutdown/reload.
+ * - Live tasks are supervised at Pi-process scope so extension reload can hand
+ *   them to the replacement runtime. Session replacement and quit still stop them.
  */
 
 const STATUS_INTERVAL_MS = 1000;
@@ -78,6 +83,15 @@ function lightBlue(value: string): string {
 
 function textContent(text: string) {
   return [{ type: 'text' as const, text }];
+}
+
+function backgroundTaskContext(ctx: ExtensionContext): BackgroundTaskContext {
+  return {
+    cwd: ctx.cwd,
+    sessionId: ctx.sessionManager.getSessionId(),
+    modelRegistry: ctx.modelRegistry,
+    model: ctx.model,
+  };
 }
 
 interface TextToolResult {
@@ -211,7 +225,8 @@ export default function backgroundTasksExtension(pi: ExtensionAPI): void {
   let latestKnownVersion: string | undefined;
   let updateCheckStarted = false;
 
-  const registry = new BackgroundTaskRegistry({
+  let eventService: BackgroundTaskExtensionService | undefined;
+  let registry = new BackgroundTaskRegistry({
     onChange: () => {
       updateUi();
     },
@@ -219,10 +234,10 @@ export default function backgroundTasksExtension(pi: ExtensionAPI): void {
       pi.sendMessage(message, options);
     },
     publishTerminal: (task) => {
-      eventService.publishTerminal(task);
+      eventService?.publishTerminal(task);
     },
   });
-  const eventService: BackgroundTaskExtensionService = installBackgroundTaskExtensionApi({
+  eventService = installBackgroundTaskExtensionApi({
     events: pi.events,
     registry,
     getContext: () => currentCtx,
@@ -232,7 +247,7 @@ export default function backgroundTasksExtension(pi: ExtensionAPI): void {
   registerFusionExtension(pi, {
     startManagedTask: async (ctx, options) => {
       currentCtx = ctx;
-      return registry.startManagedTask(ctx, options);
+      return registry.startManagedTask(backgroundTaskContext(ctx), options);
     },
     snapshot: (task) => registry.snapshot(task),
     updateManagedTask: (task, state, line) => registry.updateManagedTask(task, state, line),
@@ -241,7 +256,7 @@ export default function backgroundTasksExtension(pi: ExtensionAPI): void {
   registerDelegateExtension(pi, {
     startDelegateTask: async (ctx, options) => {
       currentCtx = ctx;
-      return registry.startDelegateTask(ctx, options);
+      return registry.startDelegateTask(backgroundTaskContext(ctx), options);
     },
     snapshot: (task) => registry.snapshot(task),
     resolveTask: (idOrPrefix) => registry.resolveTask(idOrPrefix),
@@ -325,7 +340,7 @@ export default function backgroundTasksExtension(pi: ExtensionAPI): void {
     options: StartTaskOptions = {},
   ): Promise<BgTask> {
     currentCtx = ctx;
-    return registry.startTask(ctx, command, options);
+    return registry.startTask(backgroundTaskContext(ctx), command, options);
   }
 
   async function startAttestedPiTask(
@@ -333,7 +348,7 @@ export default function backgroundTasksExtension(pi: ExtensionAPI): void {
     options: StartAttestedPiTaskOptions,
   ): Promise<BgTask> {
     currentCtx = ctx;
-    return registry.startAttestedPiTask(ctx, options);
+    return registry.startAttestedPiTask(backgroundTaskContext(ctx), options);
   }
 
   async function openTaskManager(
@@ -471,9 +486,30 @@ export default function backgroundTasksExtension(pi: ExtensionAPI): void {
   }
 
   pi.on('session_start', async (_event, ctx) => {
+    const taskCtx = backgroundTaskContext(ctx);
+    registry = acquireProcessRegistry(taskCtx, registry);
     registry.setShuttingDown(false);
     currentCtx = ctx;
-    await registry.ensureRuntimeDir(ctx);
+    await registry.ensureRuntimeDir(taskCtx);
+    await registry.restoreTerminalTasks(taskCtx);
+    eventService?.close();
+    eventService = installBackgroundTaskExtensionApi({
+      events: pi.events,
+      registry,
+      getContext: () => currentCtx,
+      isShuttingDown: () => registry.isShuttingDown(),
+    });
+    registry.rebindHost({
+      onChange: () => {
+        updateUi();
+      },
+      sendCompletionNotification: (message, options) => {
+        pi.sendMessage(message, options);
+      },
+      publishTerminal: (task) => {
+        eventService?.publishTerminal(task);
+      },
+    });
     updateUi(ctx);
     if (statusInterval) clearInterval(statusInterval);
     statusInterval = setInterval(() => {
@@ -483,22 +519,27 @@ export default function backgroundTasksExtension(pi: ExtensionAPI): void {
     void scheduleUpdateCheck(ctx);
   });
 
-  pi.on('session_shutdown', async (_event, ctx) => {
-    registry.setShuttingDown(true);
+  pi.on('session_shutdown', async (event, ctx) => {
     currentCtx = undefined;
     if (statusInterval) {
       clearInterval(statusInterval);
       statusInterval = undefined;
     }
+    if (event.reason === 'reload') {
+      registry.detachHost();
+      eventService?.close();
+      eventService = undefined;
+      return;
+    }
+
+    registry.setShuttingDown(true);
     try {
       const running = registry.allTasks().filter((task) => task.status === 'running');
-      if (running.length === 0) return;
-
       const failures: string[] = [];
       await Promise.all(
         running.map(async (task) => {
           try {
-            await registry.stopTask(task, 'shutdown', 'Killed during Pi session shutdown/reload');
+            await registry.stopTask(task, 'shutdown', 'Killed during Pi session shutdown');
           } catch (error) {
             const message = `${task.id}: ${error instanceof Error ? error.message : String(error)}`;
             failures.push(message);
@@ -510,7 +551,10 @@ export default function backgroundTasksExtension(pi: ExtensionAPI): void {
         ctx.ui.notify(`Background task cleanup failed:\n${failures.join('\n')}`, 'error');
       }
     } finally {
-      eventService.close();
+      releaseProcessRegistry(backgroundTaskContext(ctx), registry);
+      registry.detachHost();
+      eventService?.close();
+      eventService = undefined;
     }
   });
 

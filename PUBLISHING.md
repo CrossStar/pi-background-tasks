@@ -10,12 +10,12 @@ VERSION=$(node -p "require('./package.json').version")
 printf 'pi-background-tasks@%s\n' "$VERSION"
 ```
 
-Observed standalone git tags currently stop at `v0.6.0`; do **not** advertise a `v$VERSION` git install target until that tag exists in the standalone package repository.
+Verify tags in the actual release remote; do **not** advertise a `v$VERSION` git install target until that tag exists and points at the reviewed release commit. This checkout publishes Git releases to `github.com/CrossStar/pi-background-tasks` (`origin`). Package npm metadata still identifies the upstream `ismailsaleekh/pi-background-tasks`; a fork Git release does not publish or transfer the upstream npm package.
 
 ## Preconditions
 
 - npm account with publish rights for `pi-background-tasks`.
-- Standalone GitHub repository: `github.com/ismailsaleekh/pi-background-tasks`.
+- Git release repository for this checkout: `github.com/CrossStar/pi-background-tasks` (`origin`).
 - Clean worktree and final release commit in the standalone package repository.
 - Frontier model evidence, if any, uses Pi subscription/OAuth channels only; never metered APIs.
 - No automated publish, push, or tag from repair runs unless the operator explicitly requests it.
@@ -39,6 +39,7 @@ npm run payload:check
 npm run pack:dry-run
 # With pnpm 11.18.0 on PATH:
 npm run test:pnpm-pack
+# Full compatibility requires Linux/macOS (POSIX child fixtures); use WSL on Windows.
 npm run test:compat
 npm view pi-background-tasks name version --json
 ```
@@ -74,8 +75,8 @@ Before any git install instructions are published, verify in the standalone repo
 Git install smoke only after the tag exists:
 
 ```bash
-PI_CODING_AGENT_DIR=$(mktemp -d) pi -e git:github.com/ismailsaleekh/pi-background-tasks@v$VERSION --offline --no-tools --no-session -p "/jobs"
-pi install git:github.com/ismailsaleekh/pi-background-tasks@v$VERSION
+PI_CODING_AGENT_DIR=$(mktemp -d) pi -e git:github.com/CrossStar/pi-background-tasks@v$VERSION --offline --no-tools --no-session -p "/jobs"
+pi install git:github.com/CrossStar/pi-background-tasks@v$VERSION
 ```
 
 ## pi.dev/packages

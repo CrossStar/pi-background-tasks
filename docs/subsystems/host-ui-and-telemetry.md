@@ -65,9 +65,11 @@ When a newer semver is found, the footer segment is `⬆ v<latest> /bg-update`. 
 
 The host UI displays telemetry only from task snapshots: context, model, token totals, and tool counts. When unavailable, detail rows say `not reported by this background task`. The UI never copies telemetry from the parent session into a task.
 
-## Shutdown
+## Reload and shutdown
 
-On session shutdown, the extension marks the registry as shutting down, clears the status interval, kills running tasks with reason `Killed during Pi session shutdown/reload`, reports cleanup failures through the UI when possible, and closes the event service.
+On reload, the extension clears its session-scoped UI timer, detaches stale host callbacks, and closes the old EventBus service without stopping tasks. The replacement runtime acquires the process-supervised registry, restores terminal shell history when no live task object exists, installs a fresh EventBus service, and rebinds UI/notification/terminal callbacks. Running shell, Delegate, attested Pi, managed Fusion, and other registry-owned tasks therefore remain addressable by the same id across hot reload.
+
+On quit or session replacement (`new`, `resume`, `fork`), the extension marks the registry as shutting down, clears the status interval, kills running tasks with reason `Killed during Pi session shutdown`, reports cleanup failures through the UI when possible, releases the process-supervised registry, and closes the event service.
 
 ## Related docs
 

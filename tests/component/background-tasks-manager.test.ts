@@ -364,7 +364,11 @@ void describe('BackgroundTasksManager component', () => {
         task({ outputAbsPath, bytesWritten: 33 }),
       ]);
       try {
-        await new Promise((resolve) => setTimeout(resolve, 20));
+        const deadline = Date.now() + 5000;
+        while (!stripAnsi(h.instance.render(100).join('\n')).includes('only-line-c')) {
+          assert.ok(Date.now() < deadline, 'detail output should load before scrolling');
+          await new Promise((resolve) => setTimeout(resolve, 10));
+        }
         h.instance.handleInput('\x1b[A');
         h.instance.handleInput('\x1b[A');
         const text = stripAnsi(h.instance.render(100).join('\n'));

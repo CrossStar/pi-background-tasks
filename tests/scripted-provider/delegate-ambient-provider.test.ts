@@ -2,7 +2,8 @@ import { afterEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
-import { mkdir, mkdtemp, readFile, rm, symlink } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { prepareDelegateLaunch } from '../../src/core/delegate/runner.js';
@@ -22,7 +23,7 @@ import { isolatedTestEnv } from '../helpers/normalize.js';
  */
 const roots: string[] = [];
 const providerExtension = resolve('tests/scripted-provider/delegate-guard-provider.ts');
-const piExecutable = resolve('node_modules/.bin/pi');
+const piCli = fileURLToPath(new URL('./cli.js', import.meta.resolve('@earendil-works/pi-coding-agent')));
 
 async function runChild(
   mode: DelegateExtensionMode,
@@ -34,9 +35,10 @@ async function runChild(
   const extensionsDir = join(agentDir, 'extensions');
   await mkdir(cwd, { recursive: true });
   await mkdir(extensionsDir, { recursive: true });
-  // A symlink keeps package imports resolving from this repository while still
-  // exercising Pi's global ambient-extension discovery path.
-  await symlink(providerExtension, join(extensionsDir, 'custom-provider.ts'));
+  // Import the repository fixture through ambient discovery without requiring
+  // Windows symlink privileges or changing the fixture's dependency resolution.
+  await writeFile(join(extensionsDir, 'custom-provider.ts'),
+    `export { default } from ${JSON.stringify(pathToFileURL(providerExtension).href)};\n`);
 
   const evidenceRaw = await readFile(
     resolve('src/core/delegate/hook-contract-evidence.json'),
@@ -75,7 +77,7 @@ async function runChild(
   });
 
   const result = await new Promise<{ code: number | null; stderr: string }>((resolveResult, reject) => {
-    const child = spawn(piExecutable, [...prepared.argv], {
+    const child = spawn(process.execPath, [piCli, ...prepared.argv], {
       cwd,
       env: prepared.env,
       stdio: ['pipe', 'ignore', 'pipe'],
@@ -123,7 +125,7 @@ void describe('delegate ambient extension provider discovery', { concurrency: fa
         entry === '--extension' ? [ambient.argv[index + 1] ?? ''] : [],
       );
       assert.equal(explicitExtensions.length, 1);
-      assert.match(explicitExtensions[0] ?? '', /extensions\/delegate-child\.(?:ts|js)$/);
+      assert.match(explicitExtensions[0] ?? '', /extensions[\\/]delegate-child\.(?:ts|js)$/);
       assert.ok(existsSync(join(ambient.artifactDir, 'result.json')));
     },
   );

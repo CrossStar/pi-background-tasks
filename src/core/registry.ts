@@ -1,8 +1,8 @@
 import { spawn as nodeSpawn, type SpawnOptions } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { createWriteStream, existsSync } from 'node:fs';
-import { mkdir, realpath, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { mkdir, readFile, readdir, realpath, writeFile } from 'node:fs/promises';
+import { join, normalize, resolve } from 'node:path';
 import type { Api, Model } from '@earendil-works/pi-ai';
 import type { ExtensionContext } from '@earendil-works/pi-coding-agent';
 import { formatSize } from '@earendil-works/pi-coding-agent';
@@ -147,6 +147,12 @@ export type CompletionNotificationSender = (
   message: CompletionNotificationMessage,
   options: CompletionNotificationOptions,
 ) => void;
+
+export interface BackgroundTaskHostBindings {
+  onChange: () => void;
+  sendCompletionNotification: CompletionNotificationSender;
+  publishTerminal: (task: BgTaskSnapshot) => void;
+}
 
 export interface BackgroundTaskRegistryOptions {
   onChange?: () => void;
@@ -715,10 +721,56 @@ function writeDelegateStdin(
   });
 }
 
+interface ProcessRegistryStore {
+  readonly registries: Map<string, BackgroundTaskRegistry>;
+}
+
+const PROCESS_REGISTRY_STORE = Symbol.for('pi-background-tasks.process-registry.v1');
+
+function processRegistryStore(): ProcessRegistryStore {
+  const root = process as NodeJS.Process & {
+    [PROCESS_REGISTRY_STORE]?: ProcessRegistryStore;
+  };
+  root[PROCESS_REGISTRY_STORE] ??= { registries: new Map() };
+  return root[PROCESS_REGISTRY_STORE];
+}
+
+function processRegistryKey(ctx: Pick<BackgroundTaskContext, 'cwd' | 'sessionId'>): string {
+  return JSON.stringify([
+    resolve(ctx.cwd),
+    ctx.sessionId ?? `session-${String(process.pid)}`,
+    process.pid,
+  ]);
+}
+
+export function acquireProcessRegistry(
+  ctx: Pick<BackgroundTaskContext, 'cwd' | 'sessionId'>,
+  candidate: BackgroundTaskRegistry,
+): BackgroundTaskRegistry {
+  const store = processRegistryStore();
+  const key = processRegistryKey(ctx);
+  const existing = store.registries.get(key);
+  if (existing !== undefined) return existing;
+  store.registries.set(key, candidate);
+  return candidate;
+}
+
+export function releaseProcessRegistry(
+  ctx: Pick<BackgroundTaskContext, 'cwd' | 'sessionId'>,
+  registry: BackgroundTaskRegistry,
+): void {
+  const store = processRegistryStore();
+  const key = processRegistryKey(ctx);
+  if (store.registries.get(key) === registry) store.registries.delete(key);
+}
+
 export class BackgroundTaskRegistry {
   private readonly tasks = new Map<string, BgTask>();
+  private readonly deliveryReady = new WeakSet<BgTask>();
   private runtimeDir: RuntimeDir | undefined;
+  private runtimeHistoryRestored = false;
   private shuttingDown = false;
+  private hostBound = true;
   private readonly spawn: BackgroundTaskSpawn;
   private readonly killProcess: KillProcessFn;
   private readonly killTree: KillTreeFn;
@@ -731,9 +783,9 @@ export class BackgroundTaskRegistry {
   private readonly killGraceMs: number;
   private readonly stopWaitMs: number;
   private readonly logger: Pick<Console, 'error'>;
-  private readonly onChange: () => void;
-  private readonly sendCompletionNotification: CompletionNotificationSender;
-  private readonly publishTerminalSnapshot: (task: BgTaskSnapshot) => void;
+  private onChange: () => void;
+  private sendCompletionNotification: CompletionNotificationSender;
+  private publishTerminalSnapshot: (task: BgTaskSnapshot) => void;
   private readonly windowsKillStates = new WeakMap<BgTask, WindowsKillState>();
 
   constructor(options: BackgroundTaskRegistryOptions) {
@@ -769,6 +821,37 @@ export class BackgroundTaskRegistry {
     this.shuttingDown = value;
   }
 
+  detachHost(): void {
+    this.hostBound = false;
+    this.onChange = noopOnChange;
+  }
+
+  rebindHost(bindings: BackgroundTaskHostBindings): void {
+    this.onChange = bindings.onChange;
+    this.sendCompletionNotification = bindings.sendCompletionNotification;
+    this.publishTerminalSnapshot = bindings.publishTerminal;
+    this.hostBound = true;
+    this.onChange();
+    for (const task of this.tasks.values()) {
+      if (!this.deliveryReady.has(task)) continue;
+      if (!task.terminalPublished) this.publishTerminal(task);
+      if (!task.notified && task.notifyOnCompletion) {
+        try {
+          this.notifyCompletion(task);
+          void this.writeMetadata(task).catch((error: unknown) => {
+            this.logger.error(
+              `[background-tasks] failed to persist rebound notification for ${task.id}:`,
+              error,
+            );
+          });
+        } catch (error) {
+          this.logger.error(`[background-tasks] rebound notification failed for ${task.id}:`, error);
+        }
+      }
+    }
+    this.pruneOldTasks();
+  }
+
   allTasks(): BgTask[] {
     return [...this.tasks.values()];
   }
@@ -786,6 +869,47 @@ export class BackgroundTaskRegistry {
     await mkdir(runtimeDirAbs, { recursive: true });
     this.runtimeDir = { abs: runtimeDirAbs, display: runtimeDirDisplay };
     return this.runtimeDir;
+  }
+
+  async restoreTerminalTasks(ctx: BackgroundTaskContext): Promise<number> {
+    if (this.runtimeHistoryRestored) return 0;
+    const dir = await this.ensureRuntimeDir(ctx);
+    const recovered: BgTask[] = [];
+    let entries: string[];
+    try {
+      entries = await readdir(dir.abs);
+    } catch (error) {
+      throw new Error(
+        `Cannot read background task runtime directory ${dir.display}: ${BackgroundTaskRegistry.errorMessage(error)}`,
+      );
+    }
+
+    for (const entry of entries) {
+      if (!entry.endsWith('.json')) continue;
+      const id = entry.slice(0, -'.json'.length);
+      if (!/^b[a-zA-Z0-9_.-]+$/u.test(id) || this.tasks.has(id)) continue;
+      const metadataAbsPath = join(dir.abs, entry);
+      try {
+        const value: unknown = JSON.parse(await readFile(metadataAbsPath, 'utf8'));
+        const restored = this.restoreTerminalTask(value, id, dir, ctx);
+        if (restored !== undefined) recovered.push(restored);
+      } catch (error) {
+        this.logger.error(
+          `[background-tasks] cannot restore task metadata ${metadataAbsPath}:`,
+          error,
+        );
+      }
+    }
+
+    recovered.sort((left, right) => left.startTime - right.startTime);
+    for (const task of recovered) {
+      this.tasks.set(task.id, task);
+      this.deliveryReady.add(task);
+    }
+    this.runtimeHistoryRestored = true;
+    this.pruneOldTasks();
+    if (recovered.length > 0) this.onChange();
+    return recovered.length;
   }
 
   async startTask(
@@ -2240,7 +2364,7 @@ export class BackgroundTaskRegistry {
   }
 
   private publishTerminal(task: BgTask): void {
-    if (task.terminalPublished || task.terminalPublishInFlight) return;
+    if (!this.deliveryReady.has(task) || !this.hostBound || task.terminalPublished || task.terminalPublishInFlight) return;
     task.terminalPublishInFlight = true;
     if (task.terminalPublicationGate === undefined) {
       this.tryPublishTerminalNow(task);
@@ -2261,7 +2385,7 @@ export class BackgroundTaskRegistry {
 
   private tryPublishTerminalNow(task: BgTask): void {
     try {
-      if (task.terminalPublished) return;
+      if (!this.hostBound || task.terminalPublished) return;
       this.publishTerminalSnapshot(snapshot(task));
       task.terminalPublished = true;
       if (task.terminalPublishRetryHandle) {
@@ -2289,7 +2413,7 @@ export class BackgroundTaskRegistry {
   }
 
   private notifyCompletion(task: BgTask): void {
-    if (!task.notifyOnCompletion || task.notified || this.shuttingDown) return;
+    if (!this.deliveryReady.has(task) || !this.hostBound || !task.notifyOnCompletion || task.notified || this.shuttingDown) return;
     task.notified = true;
     const exit =
       task.exitCode === undefined ? '' : `\n  <exit-code>${String(task.exitCode)}</exit-code>`;
@@ -2384,9 +2508,11 @@ export class BackgroundTaskRegistry {
 
     task.endTime = this.now();
     if (finalError) task.error = finalError;
+    let metadataDurable = false;
     try {
       await this.writeMetadataSnapshot(task, { ...snapshot(task), status: finalStatus });
       task.status = finalStatus;
+      metadataDurable = true;
     } catch (metadataError) {
       finalStatus = 'failed';
       task.status = 'failed';
@@ -2395,7 +2521,9 @@ export class BackgroundTaskRegistry {
         `[background-tasks] failed to write metadata for ${task.id}:`,
         metadataError,
       );
-      await this.writeMetadata(task).catch((retryError: unknown) => {
+      await this.writeMetadata(task).then(() => {
+        metadataDurable = true;
+      }).catch((retryError: unknown) => {
         this.logger.error(
           `[background-tasks] failed to write failed terminal metadata for ${task.id}:`,
           retryError,
@@ -2405,7 +2533,6 @@ export class BackgroundTaskRegistry {
 
     for (const waiter of task.waiters.splice(0)) waiter();
     this.onChange();
-    this.publishTerminal(task);
     let deliveryGateReady = true;
     if (task.terminalPublicationGate !== undefined) {
       try {
@@ -2418,7 +2545,9 @@ export class BackgroundTaskRegistry {
         );
       }
     }
-    if (deliveryGateReady) {
+    if (deliveryGateReady && metadataDurable) {
+      this.deliveryReady.add(task);
+      this.publishTerminal(task);
       try {
         this.notifyCompletion(task);
       } catch (notificationError) {
@@ -2439,10 +2568,116 @@ export class BackgroundTaskRegistry {
     this.pruneOldTasks();
   }
 
+  private restoreTerminalTask(
+    value: unknown,
+    id: string,
+    dir: RuntimeDir,
+    ctx: BackgroundTaskContext,
+  ): BgTask | undefined {
+    if (!isJsonObject(value)) throw new Error('task metadata must be an object');
+    const status = value['status'];
+    if (status === 'running') {
+      throw new Error('running task metadata cannot be restored without live process ownership');
+    }
+    if (status !== 'completed' && status !== 'failed' && status !== 'killed') {
+      throw new Error('task metadata has an invalid terminal status');
+    }
+    const requireString = (key: string): string => {
+      const field = value[key];
+      if (typeof field !== 'string') throw new Error(`task metadata ${key} must be a string`);
+      return field;
+    };
+    const requireNumber = (key: string): number => {
+      const field = value[key];
+      if (typeof field !== 'number' || !Number.isFinite(field)) {
+        throw new Error(`task metadata ${key} must be a finite number`);
+      }
+      return field;
+    };
+    const requireBoolean = (key: string): boolean => {
+      const field = value[key];
+      if (typeof field !== 'boolean') throw new Error(`task metadata ${key} must be boolean`);
+      return field;
+    };
+    if (requireString('id') !== id) throw new Error('task metadata id does not match filename');
+    if (value['delegate'] !== undefined || value['fusion'] !== undefined) {
+      throw new Error('typed task metadata requires a live registry handoff');
+    }
+    const expectedOutputPath = join(dir.display, `${id}.output`);
+    const outputPath = requireString('outputPath');
+    if (normalize(outputPath) !== normalize(expectedOutputPath)) {
+      throw new Error('task metadata outputPath is outside its runtime directory');
+    }
+    const taskCwd = requireString('cwd');
+    if (resolve(taskCwd) !== resolve(ctx.cwd)) {
+      throw new Error('task metadata cwd does not match the active project');
+    }
+    const bytesWritten = requireNumber('bytesWritten');
+    if (bytesWritten < 0) throw new Error('task metadata bytesWritten must be non-negative');
+    const startTime = requireNumber('startTime');
+    const nameValue = value['name'];
+    if (nameValue !== undefined && typeof nameValue !== 'string') {
+      throw new Error('task metadata name must be a string when present');
+    }
+    const command = requireString('command');
+    const task: BgTask = {
+      id,
+      name: normalizeTaskName(nameValue) ?? deriveTaskNameFromCommand(command),
+      command,
+      status,
+      outputPath,
+      outputAbsPath: join(dir.abs, `${id}.output`),
+      metadataAbsPath: join(dir.abs, `${id}.json`),
+      cwd: taskCwd,
+      startTime,
+      bytesWritten,
+      isAgent: requireBoolean('isAgent'),
+      notified: requireBoolean('notified'),
+      notifyOnCompletion: requireBoolean('notifyOnCompletion'),
+      triggerOnCompletion: requireBoolean('triggerOnCompletion'),
+      waiters: [],
+    };
+    const assignString = (key: 'description' | 'error' | 'model' | 'telemetryUnavailableReason' | 'attestationPath'): void => {
+      const field = value[key];
+      if (field === undefined) return;
+      if (typeof field !== 'string') throw new Error(`task metadata ${key} must be a string`);
+      task[key] = field;
+    };
+    assignString('description');
+    assignString('error');
+    assignString('model');
+    assignString('telemetryUnavailableReason');
+    assignString('attestationPath');
+    for (const key of ['endTime', 'pid', 'timeoutSeconds'] as const) {
+      const field = value[key];
+      if (field === undefined) continue;
+      if (typeof field !== 'number' || !Number.isFinite(field)) {
+        throw new Error(`task metadata ${key} must be a finite number`);
+      }
+      task[key] = field;
+    }
+    const exitCode = value['exitCode'];
+    if (exitCode !== undefined) {
+      if (exitCode !== null && (typeof exitCode !== 'number' || !Number.isInteger(exitCode))) {
+        throw new Error('task metadata exitCode must be an integer or null');
+      }
+      task.exitCode = exitCode;
+    }
+    const signal = value['signal'];
+    if (signal !== undefined) {
+      if (signal !== null && typeof signal !== 'string') {
+        throw new Error('task metadata signal must be a string or null');
+      }
+      task.signal = signal;
+    }
+    return task;
+  }
+
   private pruneOldTasks(): void {
     if (this.tasks.size <= this.maxRecentTasks) return;
     const removable = [...this.tasks.values()]
-      .filter((task) => task.status !== 'running')
+      .filter((task) => task.status !== 'running' && task.terminalPublished &&
+        (!task.notifyOnCompletion || task.notified || this.shuttingDown))
       .sort((a, b) => (a.endTime ?? a.startTime) - (b.endTime ?? b.startTime));
     while (this.tasks.size > this.maxRecentTasks && removable.length > 0) {
       const task = removable.shift();

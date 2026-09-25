@@ -228,8 +228,8 @@ async function waitFor(
   message: string,
   timeoutMs = 5000,
 ): Promise<void> {
-  const start = Date.now();
-  while (Date.now() - start < timeoutMs) {
+  const start = performance.now();
+  while (performance.now() - start < timeoutMs) {
     if (await predicate()) return;
     await new Promise((resolve) => setTimeout(resolve, 50));
   }

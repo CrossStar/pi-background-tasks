@@ -17,7 +17,9 @@ The runtime owns task identity, shell invocation, process lifecycle, bounded log
 - Terminal statuses are exactly `completed`, `failed`, and `killed`.
 - Runtime directory: `.pi/tasks/<session-id>-<pid>/` under the project cwd.
 - Per task: `<task-id>.output` and `<task-id>.json`; some agent modes may add wrapper or attestation files.
-- In-memory recent retention prunes oldest finished tasks over the limit while preserving running tasks.
+- A process-global supervisor retains the live registry across Pi extension reload. The replacement extension runtime acquires the same registry by resolved cwd, session id, and Pi pid, then rebinds UI, notification, and EventBus delivery.
+- If no live handoff exists, session start restores validated terminal ordinary shell-task metadata from the current runtime directory. It does not guess at or reattach metadata marked `running`, and typed Delegate/Fusion result recovery remains owned by their live process handoff and artifact-verification paths.
+- In-memory recent retention prunes oldest finished tasks over the limit while preserving running tasks and terminal tasks with pending publication or notification.
 - `resolveTask` accepts exact ids or unambiguous prefixes and fails loudly for empty, unknown, or ambiguous ids.
 
 ## Starting managed tasks
@@ -57,6 +59,14 @@ Telemetry is task-owned. It is parsed from task output/control lines when the ta
 A child closing with code `0` becomes `completed` unless killed/timeout/cap state overrides it. Nonzero exit becomes `failed` with `Exited with code ...`. User or shutdown kills become `killed`; timeout and output cap become `failed`.
 
 During finalization, the runtime flushes wrapped-agent output, ends and waits for the output stream to finish/close, writes terminal metadata through the durable metadata path, updates waiters, initiates terminal EventBus publication, sends the completion notification when enabled and not shutting down, persists notification state, then prunes old finished tasks. Actual EventBus emission may wait behind the run-response publication gate and therefore may occur after the completion notification; it still occurs only after stream close and terminal metadata. The registry calls a historically named `closeAndFsyncOutputStream()` helper, but its current implementation ends and observes the stream rather than issuing `fsync` for ordinary `.output`; durable terminal truth refers to the metadata-backed status, not a stronger crash-durability guarantee for every output byte.
+
+Terminal delivery is eligible only after terminal metadata has been persisted and the publication gate has resolved. Rebinding cannot bypass either condition. If both terminal metadata writes fail, the task records the failure locally and logs it without sending a durable completion receipt. Actual EventBus emission checks that a host is still bound, including after an asynchronous gate wait.
+
+## Reload handoff
+
+On `session_shutdown` with reason `reload`, the host detaches stale Pi callbacks without setting shutdown state or stopping tasks. Live child handles, timers, managed cancellation hooks, output streams, and task identity remain in the process-global registry. The replacement runtime acquires that registry during `session_start`, installs a fresh EventBus service, and rebinds callbacks before normal use. A task that reaches terminal state during the short detached interval keeps notification and terminal publication pending; rebinding retries those deliveries rather than marking them sent to a stale runtime.
+
+This is hot-reload continuity inside one Pi process, not restart reattachment. Quit and session replacement (`new`, `resume`, `fork`) still stop running tasks and release the supervised registry. Durable terminal shell history can be reconstructed from validated metadata in the same runtime directory, but a new Pi pid uses a new directory and no PID-only process adoption is attempted.
 
 ## Stopping tasks
 

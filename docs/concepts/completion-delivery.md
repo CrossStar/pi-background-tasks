@@ -51,7 +51,7 @@ If either completion flag was intentionally disabled, manual inspection is allow
 
 ## Failures and suppression
 
-If notification send fails, the task resets `notified:false` and logs the error; it does not silently pretend delivery happened. During Pi session shutdown/reload, notifications are suppressed while running tasks are killed.
+If notification send fails, the task resets `notified:false` and logs the error; it does not silently pretend delivery happened. During quit or session replacement, notifications are suppressed while running tasks are killed. During extension reload, stale host delivery is detached without killing tasks; a completion in that interval remains pending and is delivered after the replacement runtime rebinds.
 
 ## Related docs
 

@@ -12,7 +12,7 @@ covers_sources: []
 <!-- pi-docs:begin name="command-contract-jobs" generator="scripts/docs/generate.mjs" -->
 | Command | Description | Provenance |
 | --- | --- | --- |
-| `/jobs` | List running and recent background tasks | `src/extension.ts:605` |
+| `/jobs` | List running and recent background tasks | `src/extension.ts:649` |
 <!-- pi-docs:end name="command-contract-jobs" -->
 
 List running and recent background tasks.
@@ -28,7 +28,7 @@ Use `/jobs` for a point-in-time textual snapshot when the interactive task manag
 
 ## Defaults
 
-No arguments. It lists all tasks currently retained by this extension runtime: running tasks plus recent finished tasks not pruned from the in-memory registry.
+No arguments. It lists all tasks retained by the current Pi process-supervised registry: running tasks plus recent finished tasks not pruned from memory. Extension reload hands this registry to the replacement runtime, so task ids and history remain visible.
 
 ## Lifecycle
 
@@ -56,7 +56,7 @@ No task-resolution errors; it formats the current registry contents.
 
 ## Runtime artifacts
 
-`/jobs` reads in-memory task snapshots. It points at `.pi/tasks/<session-id>-<pid>/<task-id>.output` but does not read output bytes.
+`/jobs` reads in-memory task snapshots. On startup the registry may first restore validated terminal ordinary shell-task metadata from `.pi/tasks/<session-id>-<pid>/`; `/jobs` itself does not read output bytes.
 
 ## Safety boundaries
 

@@ -44,7 +44,7 @@ From current `package.json`:
 | Full | `npm run test:full` | Default + PTY + agent-loop. |
 | Smoke | `npm run smoke` | Isolated load-only `/jobs`. |
 | Large context smoke | `npm run smoke:large-context` | Offline Fusion context/budget reproduction; no inference/child spawn. |
-| Compatibility | `npm run test:compat` | Release-only exact Pi version install/compat plus current-host witness. |
+| Compatibility | `npm run test:compat` | Exact Pi version install/compat plus current-host witness, required for release and run in Linux Node 22.19.0 CI. Full POSIX PATH fixtures require Linux/macOS; use WSL on Windows. Unsupported Windows execution fails explicitly instead of skipping assertions. |
 | Pack | `npm run pack:dry-run` | Release payload preview. |
 | Docs generate | `npm run docs:generate` | Regenerates generated docs regions/index/manifest. |
 | Docs verify | `npm run docs:verify` | Offline, read-only deterministic docs freshness verification; renders generated files twice in memory and reports semantic receipt freshness without requiring it. |

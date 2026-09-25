@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
+import { fileURLToPath } from 'node:url';
 import { join, resolve } from 'node:path';
 import { isJsonObject, parseJsonText } from '../../src/core/common.js';
 import { FUSION_CANDIDATE_MAX_OUTPUT_BYTES } from '../../src/core/fusion/output-contract.js';
@@ -24,7 +25,8 @@ interface ProcessResult {
 
 async function runPi(args: readonly string[], env: NodeJS.ProcessEnv): Promise<ProcessResult> {
   return new Promise((resolveRun, reject) => {
-    const child = spawn(resolve('node_modules/.bin/pi'), args, {
+    const piCli = fileURLToPath(new URL('./cli.js', import.meta.resolve('@earendil-works/pi-coding-agent')));
+    const child = spawn(process.execPath, [piCli, ...args], {
       cwd: process.cwd(),
       env,
       shell: false,

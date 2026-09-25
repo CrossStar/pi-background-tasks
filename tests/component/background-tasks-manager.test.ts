@@ -175,6 +175,142 @@ function assertWidth(lines: string[], width: number) {
 }
 
 void describe('BackgroundTasksManager component', () => {
+  void it('refreshes tqdm carriage-return frames instead of showing stale concatenated progress', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'bg-progress-'));
+    const output = join(root, 'log');
+    const initial = 'CHECKPOINT start\r\n\rprogress 1/360\rprogress 2/360';
+    await writeFile(output, initial);
+    const h = manager({ initialTaskId: 'b12345678' }, [task({ outputAbsPath: output })]);
+    const waitForText = async (pattern: RegExp) => {
+      const deadline = performance.now() + 5000;
+      while (!pattern.test(stripAnsi(h.instance.render(100).join('\n')))) {
+        assert.ok(performance.now() < deadline, `expected ${pattern}`);
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      }
+    };
+    try {
+      await waitForText(/progress 2\/360/);
+      let rendered = stripAnsi(h.instance.render(100).join('\n'));
+      assert.match(rendered, /CHECKPOINT start/);
+      assert.doesNotMatch(rendered, /progress 1\/360/);
+      await writeFile(output, initial + '\r\x1b[32mprogress 3/360\x1b[0m\r');
+      await waitForText(/progress 3\/360/);
+      rendered = stripAnsi(h.instance.render(100).join('\n'));
+      assert.doesNotMatch(rendered, /progress 2\/360/);
+      await writeFile(output, initial + '\rprogress 360/360\r\nDEMO_COMPLETE\r\n');
+      await waitForText(/DEMO_COMPLETE/);
+      assert.match(stripAnsi(h.instance.render(100).join('\n')), /progress 360\/360/);
+    } finally { h.instance.dispose(); await rm(root, { recursive: true, force: true }); }
+  });
+
+  void it('shows the complete wrapped command with scrolling and exact copying', async () => {
+    const command = 'node script.js ' + '--参数=value '.repeat(100) + '\nFINAL_COMMAND_ARGUMENT';
+    const copied: string[] = [];
+    const h = manager({ getHeight: () => 16, copyText: async (text) => { copied.push(text); } }, [task({ command })]);
+    try {
+      h.instance.render(60);
+      h.instance.handleInput('v');
+      let lines = h.instance.render(60);
+      assert.match(stripAnsi(lines.join('\n')), /Full command:/);
+      assert.doesNotMatch(stripAnsi(lines.join('\n')), /FINAL_COMMAND_ARGUMENT/);
+      assertWidth(lines, 60);
+      assert.ok(lines.length <= 16);
+      h.instance.handleInput('\x1b[F');
+      lines = h.instance.render(60);
+      assert.match(stripAnsi(lines.join('\n')), /FINAL_COMMAND_ARGUMENT/);
+      assertWidth(h.instance.render(32), 32);
+      h.instance.handleInput('y');
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      assert.deepEqual(copied, [command]);
+      h.instance.handleInput('\x1b');
+      assert.equal(h.closed, false);
+      assert.match(stripAnsi(h.instance.render(60).join('\n')), /bg tasks focused/);
+      h.instance.handleInput('\r');
+      h.instance.handleInput('v');
+      assert.match(stripAnsi(h.instance.render(60).join('\n')), /Full command:/);
+    } finally { h.instance.dispose(); }
+  });
+
+  void it('previews without clearing unread, filters failures, searches full logs and copies paths', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'bg-monitor-'));
+    const output = join(root, 'log');
+    await writeFile(output, 'early-match\n' + 'padding\n'.repeat(20000) + 'latest-output\n');
+    const failed = task({ id: 'bfail', name: 'Failure', status: 'failed', exitCode: 7, error: 'bad input', outputAbsPath: output });
+    const running = task({ outputAbsPath: output });
+    const copied: string[] = [];
+    const opened: string[] = [];
+    const h = manager({ copyText: async (text) => { copied.push(text); }, openOutput: async (t) => { opened.push(t.id); } }, [running, failed]);
+    const waitText = async (expected: RegExp) => {
+      const deadline = performance.now() + 5000;
+      while (!expected.test(stripAnsi(h.instance.render(130).join('\n')))) {
+        assert.ok(performance.now() < deadline, `expected ${expected}`);
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+    };
+    try {
+      await waitText(/latest-output/);
+      h.instance.handleInput('3');
+      await waitText(/bad input/);
+      assert.equal(h.seen.size, 0);
+      h.instance.handleInput('/');
+      h.instance.handleInput('early-match');
+      h.instance.handleInput('\r');
+      await waitText(/Match at byte 0/);
+      assert.match(stripAnsi(h.instance.render(130).join('\n')), /early-match/);
+      for (const key of ['y', 'p', 'o']) h.instance.handleInput(key);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      assert.deepEqual(copied, [failed.command, output]);
+      assert.deepEqual(opened, [failed.id]);
+      for (const width of [32, 60, 100, 160]) assertWidth(h.instance.render(width), width);
+      h.instance.handleInput('1');
+      assert.match(stripAnsi(h.instance.render(130).join('\n')), /Running/);
+      h.instance.handleInput('q');
+      assert.equal(h.closed, true);
+    } finally { h.instance.dispose(); await rm(root, { recursive: true, force: true }); }
+  });
+
+  void it('freezes scrolled output, reports appended lines, and resumes following', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'bg-monitor-follow-'));
+    const output = join(root, 'log');
+    const initial = Array.from({ length: 40 }, (_, i) => `row-${i}`).join('\n') + '\n';
+    await writeFile(output, initial);
+    const h = manager({ initialTaskId: 'b12345678' }, [task({ outputAbsPath: output })]);
+    const waitText = async (expected: RegExp) => {
+      const deadline = performance.now() + 5000;
+      while (!expected.test(stripAnsi(h.instance.render(120).join('\n')))) {
+        assert.ok(performance.now() < deadline, `expected ${expected}`);
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      }
+    };
+    try {
+      await waitText(/row-39/);
+      h.instance.handleInput('\x1b[A');
+      await writeFile(output, initial + 'arrived-one\narrived-two\n');
+      await waitText(/2 new lines/);
+      assert.doesNotMatch(stripAnsi(h.instance.render(120).join('\n')), /arrived-two/);
+      h.instance.handleInput('f');
+      await waitText(/arrived-two/);
+    } finally { h.instance.dispose(); await rm(root, { recursive: true, force: true }); }
+  });
+
+  void it('fits short terminals and preserves selected task identity after reordering', () => {
+    const first = task({ id: 'bfirst', name: 'First Selected', startTime: 100 });
+    const second = task({ id: 'bsecond', name: 'Other Task', startTime: 50 });
+    const h = manager({ getHeight: () => 20 }, [first, second]);
+    try {
+      h.instance.render(120);
+      second.startTime = 200;
+      const lines = h.instance.render(120);
+      assert.ok(lines.length <= 20);
+      const selected = stripAnsi(lines.join('\n'));
+      assert.match(selected, /›.*First Selected/);
+      for (const width of [32, 60, 120]) {
+        assertWidth(h.instance.render(width), width);
+        assert.ok(h.instance.render(width).length <= 20);
+      }
+    } finally { h.instance.dispose(); }
+  });
+
   void it('renders list within width and handles selection/actions', async () => {
     const baseTime = Date.now();
     const tasks = [
@@ -208,7 +344,7 @@ void describe('BackgroundTasksManager component', () => {
     }
   });
 
-  void it('renders task-owned context, model, token, and tool telemetry in list/detail rows and placeholder when absent', async () => {
+  void it('keeps telemetry out of previews and shows only reported agent details', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'pi-bg-context-'));
     try {
       const outputAbsPath = join(dir, 'task.output');
@@ -240,11 +376,11 @@ void describe('BackgroundTasksManager component', () => {
       const h = manager({}, tasks);
       try {
         let text = stripAnsi(h.instance.render(120).join('\n'));
-        assert.match(text, /ctx 21\.0%\/200k/);
-        assert.match(text, /model gpt-5\.5/);
-        assert.match(text, /tok 1\.3k/);
-        assert.match(text, /tools 3\/1 failed/);
-        assert.match(text, /ctx —/);
+        assert.doesNotMatch(text, /ctx |model gpt|tok 1|tools 3|not reported/);
+        h.instance.handleInput('\x1b[B');
+        assert.doesNotMatch(stripAnsi(h.instance.render(120).join('\n')), /ctx |not reported/);
+        h.instance.handleInput('\x1b[A');
+        h.instance.render(120);
         h.instance.handleInput('\r');
         await new Promise((resolve) => setTimeout(resolve, 20));
         text = stripAnsi(h.instance.render(120).join('\n'));
@@ -260,7 +396,7 @@ void describe('BackgroundTasksManager component', () => {
         h.instance.handleInput('\r');
         await new Promise((resolve) => setTimeout(resolve, 20));
         text = stripAnsi(h.instance.render(120).join('\n'));
-        assert.match(text, /Model: not reported by this background task/);
+        assert.doesNotMatch(text, /Model:|Context:|Tokens:|Tools:|not reported/);
       } finally {
         h.instance.dispose();
       }

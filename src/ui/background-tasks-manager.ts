@@ -1,10 +1,14 @@
 import { existsSync } from 'node:fs';
+import { open, stat } from 'node:fs/promises';
+import { searchLog } from './log-search.js';
 import type { Theme } from '@earendil-works/pi-coding-agent';
 import { formatSize } from '@earendil-works/pi-coding-agent';
 import {
+  Input,
   matchesKey,
   truncateToWidth,
   visibleWidth,
+  wrapTextWithAnsi,
   type Component,
   type TUI,
 } from '@earendil-works/pi-tui';
@@ -37,6 +41,11 @@ const LIGHT_BLUE_FG = '\x1b[38;2;11;70;110m';
 const LIGHT_BLUE_BORDER = '\x1b[38;2;83;160;215m';
 const ANSI_RESET = '\x1b[0m';
 
+function formatOutputAge(timestamp: number): string {
+  const elapsed = Math.max(0, Date.now() - timestamp);
+  return elapsed < 1000 ? '0s' : formatDuration(elapsed);
+}
+
 function formatTime(timestamp: number): string {
   return new Date(timestamp).toLocaleTimeString();
 }
@@ -57,11 +66,16 @@ function formatPidText(pid: BgTask['pid']): string {
   return typeof pid === 'number' ? ` · pid ${formatCount(pid)}` : '';
 }
 
-/** Normalize raw output bytes into display lines, dropping only the trailing empty line from a final newline. */
+/** Render carriage-return progress frames without concatenating stale updates. */
 function toOutputLines(content: string): string[] {
   return content
-    .replace(/\r/g, '')
+    .replace(/\r\n/g, '\n')
     .split('\n')
+    .map((line) => {
+      // A trailing CR only moves the cursor; keep the last frame until new text arrives.
+      const frames = line.replace(/\r$/, '').split('\r');
+      return frames[frames.length - 1] ?? '';
+    })
     .filter((line, index, array) => line.length > 0 || index < array.length - 1);
 }
 
@@ -99,26 +113,12 @@ function taskAge(task: BgTask, now = Date.now()): string {
   return formatDuration((task.endTime ?? now) - task.startTime);
 }
 
-function formatContextUsage(task: BgTask): string {
-  const usage = task.contextUsage;
-  if (!usage?.contextWindow) return '—';
-  const window = formatCompactNumber(usage.contextWindow);
-  if (usage.percent === null || usage.tokens === null) return `?/${window}`;
-  return `${usage.percent.toFixed(1)}%/${window}`;
-}
-
 function formatContextDetail(task: BgTask): string {
   const usage = task.contextUsage;
   if (!usage?.contextWindow) return 'not reported by this background task';
   const window = formatCompactNumber(usage.contextWindow);
   if (usage.percent === null || usage.tokens === null) return `unknown tokens / ${window} window`;
   return `${usage.percent.toFixed(1)}% of ${window} window (${formatCompactNumber(usage.tokens)} tokens)`;
-}
-
-function formatTokenUsage(task: BgTask): string {
-  const usage = task.tokenUsage;
-  if (!usage || usage.totalTokens <= 0) return '';
-  return `tok ${formatCompactNumber(usage.totalTokens)}`;
 }
 
 function formatTokenDetail(task: BgTask): string {
@@ -132,14 +132,6 @@ function formatTokenDetail(task: BgTask): string {
     `total ${formatCompactNumber(usage.totalTokens)}`,
   ];
   return parts.join(' · ');
-}
-
-function formatToolUsage(task: BgTask): string {
-  const usage = task.toolUsage;
-  if (!usage || (usage.total <= 0 && usage.failed <= 0)) return '';
-  const total = formatCount(usage.total);
-  const failed = formatCount(usage.failed);
-  return usage.failed > 0 ? `tools ${total}/${failed} failed` : `tools ${total}`;
 }
 
 function formatToolDetail(task: BgTask): string {
@@ -156,26 +148,9 @@ function formatToolDetail(task: BgTask): string {
   return parts.join(' · ');
 }
 
-function shortModelName(model: string): string {
-  const slash = model.lastIndexOf('/');
-  return slash >= 0 ? model.slice(slash + 1) : model;
-}
-
-function formatModel(task: BgTask): string {
-  if (!task.model) return '';
-  return `model ${shortModelName(task.model)}`;
-}
-
 function formatModelDetail(task: BgTask): string {
   if (!task.model) return 'not reported by this background task';
   return task.model;
-}
-
-function contextColor(theme: TaskManagerTheme, task: BgTask, text: string): string {
-  const percent = task.contextUsage?.percent ?? 0;
-  if (percent > 90) return theme.fg('error', text);
-  if (percent > 70) return theme.fg('warning', text);
-  return theme.fg('dim', text);
 }
 
 function sortTasksForUi(tasks: BgTask[]): BgTask[] {
@@ -202,13 +177,47 @@ export interface TaskManagerOptions {
   stopAllRunning: () => Promise<StopAllResult>;
   rerunTask: (task: BgTask) => Promise<BgTask>;
   showOutputPath: (task: BgTask) => void;
+  copyText?: (text: string) => Promise<void>;
+  openOutput?: (task: BgTask) => Promise<void>;
+  getHeight?: () => number;
   markSeen: (taskId: string) => void;
   markFinishedSeen: (taskIds: string[]) => void;
   isSeen: (taskId: string) => boolean;
 }
 
 export class BackgroundTasksManager implements Component {
+  private commandTask: BgTask | undefined;
+  private commandScroll = 0;
+  private commandLineCount = 0;
+  private get commandRows(): number {
+    return Math.max(1, (this.options.getHeight?.() ?? 24) - 7);
+  }
   private mode: 'list' | 'detail' = 'list';
+  private failedOnly = false;
+  private explicitFilter = false;
+  private selectionChanged = true;
+  private renderWidth = 118;
+  private get listRows(): number {
+    if (!this.options.getHeight) return LIST_VISIBLE_ROWS;
+    return this.renderWidth < 100 ? 3 : Math.max(3, Math.min(LIST_VISIBLE_ROWS, this.options.getHeight() - 10));
+  }
+  private get outputRows(): number {
+    return this.options.getHeight ? Math.max(3, Math.min(DETAIL_VISIBLE_OUTPUT_LINES, this.options.getHeight() - 17)) : DETAIL_VISIBLE_OUTPUT_LINES;
+  }
+  private disposed = false;
+  private previewId: string | undefined;
+  private reading = false;
+  private readGeneration = 0;
+  private pendingLines = 0;
+  private observedBytes = 0;
+  private outputMtime: number | undefined;
+  private readonly outputTimes = new Map<string, number>();
+  private sampling = false;
+  private searchInput: Input | undefined;
+  private searchQuery = '';
+  private searchOffset: number | undefined;
+  private searchController: AbortController | undefined;
+  private searchMessage = '';
   private selectedIndex = 0;
   private listScroll = 0;
   private detailTaskId: string | undefined;
@@ -243,13 +252,18 @@ export class BackgroundTasksManager implements Component {
       const hasFinished = allTasks.some((task) => task.status !== 'running');
       if (!hasRunning && hasFinished) this.showHistory = true;
     }
+    void this.sampleOutputTimes();
     this.refreshTimer = setInterval(() => {
-      if (this.mode === 'detail') void this.refreshTail();
+      void this.sampleOutputTimes();
+      void this.refreshTail();
       this.tui.requestRender();
     }, STATUS_INTERVAL_MS);
   }
 
   dispose(): void {
+    this.disposed = true;
+    this.readGeneration++;
+    this.searchController?.abort();
     clearInterval(this.refreshTimer);
   }
 
@@ -258,6 +272,79 @@ export class BackgroundTasksManager implements Component {
   }
 
   handleInput(data: string): void {
+    if (this.commandTask) {
+      if (matchesKey(data, 'escape') || matchesKey(data, 'left') || data === 'v' || data === 'q' || data === 'x') {
+        this.commandTask = undefined;
+      } else if (data === 'y') {
+        void this.fileAction(this.commandTask, 'y');
+      } else {
+        const maxScroll = Math.max(0, this.commandLineCount - this.commandRows);
+        if (matchesKey(data, 'up')) this.commandScroll--;
+        if (matchesKey(data, 'down')) this.commandScroll++;
+        if (matchesKey(data, 'pageUp')) this.commandScroll -= this.commandRows;
+        if (matchesKey(data, 'pageDown')) this.commandScroll += this.commandRows;
+        if (matchesKey(data, 'home')) this.commandScroll = 0;
+        if (matchesKey(data, 'end')) this.commandScroll = maxScroll;
+        this.commandScroll = Math.max(0, Math.min(maxScroll, this.commandScroll));
+      }
+      this.tui.requestRender();
+      return;
+    }
+    if (this.searchInput) {
+      this.searchInput.handleInput(data);
+      this.tui.requestRender();
+      return;
+    }
+    const selected = this.mode === 'detail' ? this.detailTask() : this.currentTasks()[this.selectedIndex];
+    if (data === 'v' && selected) {
+      this.commandTask = selected;
+      this.commandScroll = 0;
+      this.confirmStopAllArmed = false;
+      this.actionMessage = undefined;
+      this.tui.requestRender();
+      return;
+    }
+    if (data === '/' && selected) {
+      this.searchInput = new Input();
+      this.searchInput.focused = true;
+      this.searchInput.setValue(this.searchQuery);
+      this.searchInput.onEscape = () => { this.searchInput = undefined; };
+      this.searchInput.onSubmit = (query) => {
+        this.searchInput = undefined;
+        this.searchQuery = query;
+        this.searchOffset = undefined;
+        void this.search(1);
+      };
+      this.tui.requestRender();
+      return;
+    }
+    if ((data === 'n' || data === 'N') && this.searchQuery) {
+      void this.search(data === 'n' ? 1 : -1);
+      return;
+    }
+    if (data === 'f') {
+      this.searchController?.abort();
+      this.searchMessage = '';
+      this.detailFollow = true;
+      this.pendingLines = 0;
+      void this.refreshTail();
+      return;
+    }
+    if (selected && ['y', 'p', 'o'].includes(data)) {
+      void this.fileAction(selected, data);
+      return;
+    }
+    if (this.mode === 'list' && ['1', '2', '3'].includes(data)) {
+      this.explicitFilter = true;
+      this.selectionChanged = true;
+      this.failedOnly = data === '3';
+      this.showHistory = data !== '1';
+      this.selectedIndex = 0;
+      this.listScroll = 0;
+      this.previewId = undefined;
+      this.tui.requestRender();
+      return;
+    }
     const stopAllKey = data === 'a' || data === 'A' || data === 'K';
     if (!stopAllKey) this.confirmStopAllArmed = false;
     this.actionMessage = undefined;
@@ -281,15 +368,36 @@ export class BackgroundTasksManager implements Component {
   }
 
   render(width: number): string[] {
-    const boxWidth = Math.max(2, Math.min(width, 118));
+    const boxWidth = Math.max(2, Math.min(width, 160));
+    this.renderWidth = boxWidth;
+    if (this.commandTask) return this.renderCommand(boxWidth);
     return this.mode === 'detail' ? this.renderDetail(boxWidth) : this.renderList(boxWidth);
   }
 
+  private renderCommand(width: number): string[] {
+    const task = this.commandTask;
+    if (!task) return this.renderList(width);
+    const lines = task.command.split('\n').flatMap((line) => wrapTextWithAnsi(line || ' ', Math.max(1, width - 4)));
+    this.commandLineCount = lines.length;
+    this.commandScroll = Math.min(this.commandScroll, Math.max(0, lines.length - this.commandRows));
+    const end = Math.min(lines.length, this.commandScroll + this.commandRows);
+    return this.frame(
+      `Full command: ${taskDisplayName(task)}`,
+      this.actionMessage ?? `lines ${this.commandScroll + 1}–${end} of ${lines.length} · wrapped to terminal width`,
+      lines.slice(this.commandScroll, end).map((line) => ` ${line}`),
+      ' ↑↓ scroll · PgUp/PgDn · Home/End · y copy · Esc back',
+      width,
+    );
+  }
+
   private close(): void {
+    this.dispose();
     this.done('closed');
   }
 
   private handleListInput(data: string): void {
+    this.selectionChanged = true;
+    if (data === 'h' || data === 'H') { this.failedOnly = false; this.explicitFilter = false; }
     const tasks = this.currentTasks();
     if (tasks.length === 0) {
       if (matchesKey(data, 'return')) this.close();
@@ -312,13 +420,13 @@ export class BackgroundTasksManager implements Component {
       return;
     }
     if (matchesKey(data, 'pageUp')) {
-      this.selectedIndex = Math.max(0, this.selectedIndex - LIST_VISIBLE_ROWS);
+      this.selectedIndex = Math.max(0, this.selectedIndex - this.listRows);
       this.ensureSelectionVisible();
       this.tui.requestRender();
       return;
     }
     if (matchesKey(data, 'pageDown')) {
-      this.selectedIndex = Math.min(tasks.length - 1, this.selectedIndex + LIST_VISIBLE_ROWS);
+      this.selectedIndex = Math.min(tasks.length - 1, this.selectedIndex + this.listRows);
       this.ensureSelectionVisible();
       this.tui.requestRender();
       return;
@@ -360,6 +468,7 @@ export class BackgroundTasksManager implements Component {
     const task = this.detailTask();
     if (matchesKey(data, 'left')) {
       this.mode = 'list';
+      this.previewId = undefined;
       this.detailTaskId = undefined;
       this.tui.requestRender();
       return;
@@ -373,14 +482,16 @@ export class BackgroundTasksManager implements Component {
       return;
     }
     if (matchesKey(data, 'pageUp')) {
-      this.scrollDetail(-DETAIL_VISIBLE_OUTPUT_LINES);
+      this.scrollDetail(-this.outputRows);
       return;
     }
     if (matchesKey(data, 'pageDown')) {
-      this.scrollDetail(DETAIL_VISIBLE_OUTPUT_LINES);
+      this.scrollDetail(this.outputRows);
       return;
     }
     if (data === 'r') {
+      this.searchController?.abort();
+      this.searchMessage = '';
       this.detailFollow = true;
       this.detailScrollTop = 0;
       void this.refreshTail();
@@ -401,11 +512,12 @@ export class BackgroundTasksManager implements Component {
 
   private currentTasks(): BgTask[] {
     const allTasks = this.options.getTasks();
+    if (this.failedOnly) return sortTasksForUi(allTasks.filter((task) => task.status === 'failed'));
     let visible = this.showHistory
       ? allTasks
       : allTasks.filter((task) => task.status === 'running');
     if (
-      !this.showHistory &&
+      !this.showHistory && !this.explicitFilter &&
       visible.length === 0 &&
       allTasks.some((task) => task.status !== 'running')
     ) {
@@ -420,6 +532,11 @@ export class BackgroundTasksManager implements Component {
   }
 
   private openDetail(taskId: string): void {
+    this.readGeneration++;
+    this.searchController?.abort();
+    this.searchMessage = '';
+    this.searchOffset = undefined;
+    this.pendingLines = 0;
     this.detailTaskId = taskId;
     this.mode = 'detail';
     this.detailLines = [];
@@ -433,8 +550,8 @@ export class BackgroundTasksManager implements Component {
 
   private ensureSelectionVisible(): void {
     if (this.selectedIndex < this.listScroll) this.listScroll = this.selectedIndex;
-    if (this.selectedIndex >= this.listScroll + LIST_VISIBLE_ROWS)
-      this.listScroll = this.selectedIndex - LIST_VISIBLE_ROWS + 1;
+    if (this.selectedIndex >= this.listScroll + this.listRows)
+      this.listScroll = this.selectedIndex - this.listRows + 1;
   }
 
   private async stopTaskFromUi(task: BgTask): Promise<void> {
@@ -510,7 +627,7 @@ export class BackgroundTasksManager implements Component {
 
   /** Scroll the detail output window. Scrolling up pauses the live tail; reaching the bottom resumes it. */
   private scrollDetail(delta: number): void {
-    const maxTop = Math.max(0, this.detailLines.length - DETAIL_VISIBLE_OUTPUT_LINES);
+    const maxTop = Math.max(0, this.detailLines.length - this.outputRows);
     if (maxTop === 0) return;
     if (this.detailFollow) {
       this.detailFollow = false;
@@ -528,9 +645,35 @@ export class BackgroundTasksManager implements Component {
   private async refreshTail(): Promise<void> {
     const task = this.detailTask();
     if (!task) return;
-    // While the user has scrolled up, the buffer is frozen so their view stays stable.
-    if (!this.detailFollow) return;
+    if (this.disposed || this.reading) return;
+    const generation = this.readGeneration;
+    const current = () => !this.disposed && generation === this.readGeneration && task.id === this.detailTaskId;
+    this.reading = true;
     try {
+      if (!existsSync(task.outputAbsPath)) {
+        this.detailLines = [];
+        this.tailError = `Output file not found: ${task.outputPath}`;
+        return;
+      }
+      const info = await stat(task.outputAbsPath);
+      if (!current()) return;
+      this.outputMtime = info.mtimeMs;
+      if (!this.detailFollow) {
+        if (info.size < this.observedBytes) {
+          this.tailError = 'Log was truncated; press f to reload.';
+          return;
+        }
+        const file = await open(task.outputAbsPath, 'r');
+        try {
+          const buffer = Buffer.alloc(Math.min(64 * 1024, info.size - this.observedBytes));
+          const read = await file.read(buffer, 0, buffer.length, this.observedBytes);
+          if (!current()) return;
+          for (const byte of buffer.subarray(0, read.bytesRead)) if (byte === 10) this.pendingLines++;
+          this.observedBytes += read.bytesRead;
+          this.tailTotalBytes = info.size;
+        } finally { await file.close(); }
+        return;
+      }
       if (!existsSync(task.outputAbsPath)) {
         this.detailLines = [];
         this.tailBytesRead = 0;
@@ -541,15 +684,111 @@ export class BackgroundTasksManager implements Component {
         return;
       }
       const read = await boundedRead(task.outputAbsPath, DETAIL_TAIL_BYTES, true);
+      if (!current() || !this.detailFollow) return;
       this.detailLines = toOutputLines(read.content);
+      this.observedBytes = read.totalBytes;
+      this.pendingLines = 0;
       this.tailBytesRead = read.bytesRead;
       this.tailTotalBytes = read.totalBytes;
       this.tailTruncated = read.truncated;
       this.tailError = undefined;
     } catch (error) {
-      this.tailError = `Output read failed: ${error instanceof Error ? error.message : String(error)}`;
+      if (current()) this.tailError = `Output read failed: ${error instanceof Error ? error.message : String(error)}`;
+    } finally {
+      this.reading = false;
+      if (!this.disposed) this.tui.requestRender();
     }
+  }
+
+  private async sampleOutputTimes(): Promise<void> {
+    if (this.sampling || this.disposed) return;
+    this.sampling = true;
+    try {
+      for (const task of this.options.getTasks()) {
+        if (this.disposed) return;
+        try { this.outputTimes.set(task.id, (await stat(task.outputAbsPath)).mtimeMs); }
+        catch { this.outputTimes.delete(task.id); }
+      }
+    } finally { this.sampling = false; if (!this.disposed) this.tui.requestRender(); }
+  }
+
+  private async fileAction(task: BgTask, key: string): Promise<void> {
+    try {
+      if (key === 'o') {
+        if (!this.options.openOutput) throw new Error('Open file is unavailable in this host. Use c to show its path.');
+        await this.options.openOutput(task);
+        this.actionMessage = 'Opened full output in the default application.';
+      } else {
+        if (!this.options.copyText) throw new Error('Clipboard is unavailable in this host.');
+        await this.options.copyText(key === 'y' ? task.command : task.outputAbsPath);
+        this.actionMessage = key === 'y' ? 'Command copied.' : 'Log path copied.';
+      }
+    } catch (error) { this.actionMessage = `Action failed: ${String(error)}`; }
+    if (!this.disposed) this.tui.requestRender();
+  }
+
+  private async search(direction: 1 | -1): Promise<void> {
+    const task = this.mode === 'detail' ? this.detailTask() : this.currentTasks()[this.selectedIndex];
+    if (!task || !this.searchQuery) return;
+    this.searchController?.abort();
+    const controller = new AbortController();
+    this.searchController = controller;
+    this.readGeneration++;
+    this.detailTaskId = task.id;
+    this.detailFollow = false;
+    this.searchMessage = 'Searching full log… Esc closes; f cancels and follows';
     this.tui.requestRender();
+    try {
+      const from = this.searchOffset === undefined ? (direction === 1 ? 0 : Number.MAX_SAFE_INTEGER)
+        : this.searchOffset + (direction === 1 ? 1 : 0);
+      const match = await searchLog(task.outputAbsPath, this.searchQuery, from, direction, controller.signal);
+      if (this.disposed || controller.signal.aborted) return;
+      if (!match) { this.searchMessage = 'No further match · N previous · / new search · f follow'; }
+      else {
+        this.searchOffset = match.offset;
+        this.detailLines = toOutputLines(match.content);
+        this.detailScrollTop = 0;
+        this.tailError = undefined;
+        this.tailTotalBytes = match.totalBytes;
+        this.observedBytes = match.totalBytes;
+        this.pendingLines = 0;
+        this.searchMessage = `Match at byte ${match.offset} · n next · N previous · f follow`;
+      }
+    } catch (error) {
+      if (!controller.signal.aborted) this.searchMessage = `Search failed: ${String(error)}`;
+    }
+    if (!this.disposed) this.tui.requestRender();
+  }
+
+  private preview(task: BgTask | undefined, width: number): string[] {
+    if (task?.id !== this.previewId) {
+      this.previewId = task?.id;
+      this.detailTaskId = task?.id;
+      this.readGeneration++;
+      this.searchController?.abort();
+      this.searchMessage = '';
+      this.searchOffset = undefined;
+      this.detailLines = [];
+      this.tailError = undefined;
+      this.outputMtime = undefined;
+      this.detailFollow = true;
+      this.pendingLines = 0;
+      this.tailBytesRead = 0;
+      void this.refreshTail();
+    }
+    if (!task) return [' No task selected'];
+    const changed = this.outputMtime === undefined ? 'output time unavailable'
+      : `last output ${formatOutputAge(this.outputMtime)} ago`;
+    const lines = [
+      ` ${taskDisplayName(task)}`,
+      ` ${statusLabel(task.status)}${formatExitCodeText(task.exitCode)} · ${taskAge(task)}${formatPidText(task.pid)}`,
+      ` ${formatSize(task.bytesWritten)} · ${changed}`,
+      ` ${task.command}`,
+    ];
+    if (task.error) lines.push(this.theme.fg('error', ` Error: ${task.error}`));
+    lines.push(...this.renderOutputBox(Math.max(4, width - 2)));
+    if (this.searchMessage) lines.push(` ${this.searchMessage}`);
+    return lines;
   }
 
   private activityLabel(task: BgTask): string {
@@ -584,7 +823,10 @@ export class BackgroundTasksManager implements Component {
       ? lightBlue(padAnsi(` ${subtitle}`, inner))
       : lightBlue(' '.repeat(inner));
     const lines = [top, row(header), row(subtitleLine), row()];
-    for (const line of body) lines.push(row(line));
+    const bodyLimit = this.options.getHeight ? Math.max(1, this.options.getHeight() - 7) : body.length;
+    const visibleBody = body.length > bodyLimit
+      ? [...body.slice(0, Math.max(0, bodyLimit - 1)), body[body.length - 1] ?? ''] : body;
+    for (const line of visibleBody) lines.push(row(line));
     lines.push(row());
     lines.push(row(footer));
     lines.push(bottom);
@@ -593,6 +835,11 @@ export class BackgroundTasksManager implements Component {
 
   private renderList(width: number): string[] {
     const tasks = this.currentTasks();
+    if (!this.selectionChanged && this.previewId) {
+      const index = tasks.findIndex((task) => task.id === this.previewId);
+      if (index >= 0) this.selectedIndex = index;
+    }
+    this.selectionChanged = false;
     if (this.selectedIndex >= tasks.length) this.selectedIndex = Math.max(0, tasks.length - 1);
     this.ensureSelectionVisible();
 
@@ -618,7 +865,7 @@ export class BackgroundTasksManager implements Component {
     if (unseenStopped) subtitleParts.push(`${formatCount(unseenStopped)} stopped`);
     if (unseenDone) subtitleParts.push(`${formatCount(unseenDone)} done`);
     if (unread) subtitleParts.push(`${formatCount(unread)} unread`);
-    const subtitle = subtitleParts.join(' · ');
+    const subtitle = `${this.failedOnly ? 'Failed' : this.showHistory ? 'All' : 'Running'} · ${subtitleParts.join(' · ')}`;
 
     const body: string[] = [];
     if (tasks.length === 0) {
@@ -631,7 +878,7 @@ export class BackgroundTasksManager implements Component {
       body.push(this.theme.fg('dim', message));
     } else {
       const maxNameWidth = Math.max(12, width - 78);
-      const visible = tasks.slice(this.listScroll, this.listScroll + LIST_VISIBLE_ROWS);
+      const visible = tasks.slice(this.listScroll, this.listScroll + this.listRows);
       for (let i = 0; i < visible.length; i++) {
         const task = visible[i];
         if (!task) continue;
@@ -651,27 +898,22 @@ export class BackgroundTasksManager implements Component {
                 : this.theme.fg('text', rawName);
         const status = statusColor(this.theme, task.status, statusLabel(task.status));
         const runtime = taskAge(task);
+        const outputTime = this.outputTimes.get(task.id);
+        const outputAge = outputTime === undefined ? 'output ?' : `output ${formatOutputAge(outputTime)} ago`;
         const size = formatSize(task.bytesWritten);
-        const context = formatContextUsage(task);
-        const contextText = ` ${contextColor(this.theme, task, `ctx ${context}`)}`;
-        const model = formatModel(task);
-        const modelText = model ? ` ${this.theme.fg('dim', model)}` : '';
-        const tokenUsage = formatTokenUsage(task);
-        const tokenText = tokenUsage ? ` ${this.theme.fg('dim', tokenUsage)}` : '';
-        const toolUsage = formatToolUsage(task);
-        const toolText = toolUsage ? ` ${this.theme.fg('dim', toolUsage)}` : '';
+
         const activity = this.activityLabel(task);
         const activityText = activity ? ` ${this.theme.fg('warning', activity)}` : '';
         const exit =
           task.status !== 'running' ? this.theme.fg('dim', formatExitCodeText(task.exitCode)) : '';
-        let row = ` ${pointer} ${unreadMark} ${name} ${this.theme.fg('dim', task.id)} ${this.theme.fg('dim', '·')} ${status}${exit} ${this.theme.fg('dim', `${runtime} ${size}`)}${contextText}${modelText}${tokenText}${toolText}${activityText}`;
+        let row = ` ${pointer} ${unreadMark} ${name} ${this.theme.fg('dim', task.id)} ${this.theme.fg('dim', '·')} ${status}${exit} ${this.theme.fg('dim', `${runtime} ${size} ${outputAge}`)}${activityText}`;
         if (selected) row = lightBlue(padAnsi(truncateToWidth(row, width - 4), width - 4));
         body.push(row);
       }
-      if (tasks.length > LIST_VISIBLE_ROWS) {
+      if (tasks.length > this.listRows) {
         const firstVisible = formatCount(this.listScroll + 1);
         const lastVisible = formatCount(
-          Math.min(tasks.length, this.listScroll + LIST_VISIBLE_ROWS),
+          Math.min(tasks.length, this.listScroll + this.listRows),
         );
         const totalVisible = formatCount(tasks.length);
         body.push(
@@ -679,7 +921,18 @@ export class BackgroundTasksManager implements Component {
         );
       }
     }
+    const preview = this.preview(tasks[this.selectedIndex], width >= 100 ? width - 42 : width - 2);
+    if (width >= 100) {
+      const listWidth = 38;
+      for (let i = 0; i < Math.max(body.length, preview.length); i++) {
+        body[i] = padAnsi(truncateToWidth(body[i] ?? '', listWidth), listWidth) + ' │' + (preview[i] ?? '');
+      }
+    } else {
+      body.push(this.theme.fg('dim', ' ── Output preview ──'), ...preview);
+    }
+    if (this.searchInput) body.push(...this.searchInput.render(Math.max(1, width - 4)));
     if (this.actionMessage) body.push(this.theme.fg('warning', `  ${this.actionMessage}`));
+    body.push(this.theme.fg('dim', ' 1 running · 2 all · 3 failed · v full command · / search · y copy · p path · o open'));
     return this.frame(
       'bg tasks focused',
       subtitle,
@@ -711,27 +964,30 @@ export class BackgroundTasksManager implements Component {
         ` ${this.theme.fg('toolTitle', 'Description:')} ${truncateToWidth(task.description, width - 16)}`,
       );
     }
-    const modelDetail = formatModelDetail(task);
-    body.push(
-      ` ${this.theme.fg('toolTitle', 'Model:')} ${task.model ? this.theme.fg('accent', modelDetail) : this.theme.fg('dim', modelDetail)}`,
-    );
-    const context = formatContextDetail(task);
-    body.push(
-      ` ${this.theme.fg('toolTitle', 'Context:')} ${contextColor(this.theme, task, context)}`,
-    );
-    body.push(
-      ` ${this.theme.fg('toolTitle', 'Tokens:')} ${this.theme.fg('dim', formatTokenDetail(task))}`,
-    );
-    body.push(
-      ` ${this.theme.fg('toolTitle', 'Tools:')} ${this.theme.fg('dim', formatToolDetail(task))}`,
-    );
+
     body.push(
       ` ${this.theme.fg('toolTitle', 'Command:')} ${truncateToWidth(task.command, width - 13)}`,
     );
+    if (this.options.getHeight) {
+      body.splice(0, body.length,
+        ` ${name} · ${status}${exit} · ${taskAge(task)}${formatPidText(task.pid)}`,
+        ` ${task.outputPath}`,
+        ` ${task.command}`,
+      );
+    }
+    if (task.isAgent || task.delegate !== undefined || task.fusion !== undefined) {
+      if (task.model) body.push(` Model: ${formatModelDetail(task)}`);
+      if (task.contextUsage?.contextWindow) body.push(` Context: ${formatContextDetail(task)}`);
+      if (task.tokenUsage && task.tokenUsage.totalTokens > 0) body.push(` Tokens: ${formatTokenDetail(task)}`);
+      if (task.toolUsage && (task.toolUsage.total > 0 || task.toolUsage.failed > 0)) body.push(` Tools: ${formatToolDetail(task)}`);
+    }
     if (task.error) body.push(` ${this.theme.fg('error', `Error: ${task.error}`)}`);
     body.push('', ` ${this.theme.fg('toolTitle', 'Output tail:')}`);
     body.push(...this.renderOutputBox(width - 4));
+    if (this.searchMessage) body.push(` ${this.searchMessage}`);
+    if (this.searchInput) body.push(...this.searchInput.render(Math.max(1, width - 4)));
     if (this.actionMessage) body.push(this.theme.fg('warning', ` ${this.actionMessage}`));
+    body.push(' v full command · / search · n/N match · f follow · y copy · p path · o open');
     const subtitle = `${task.id} · ${task.status === 'running' ? 'live tail refreshes every second' : 'final output'}`;
     const footer = ` ${this.theme.fg('dim', '↑/↓ scroll · ← list · r refresh · k stop · R rerun · c path · x close')}`;
     return this.frame(`bg: ${truncateChars(name, 64)}`, subtitle, body, footer, width);
@@ -749,12 +1005,12 @@ export class BackgroundTasksManager implements Component {
     } else if (this.detailLines.length === 0) {
       lines.push(row(this.theme.fg('dim', 'No output yet')));
     } else {
-      const maxTop = Math.max(0, this.detailLines.length - DETAIL_VISIBLE_OUTPUT_LINES);
+      const maxTop = Math.max(0, this.detailLines.length - this.outputRows);
       const start = this.detailFollow ? maxTop : Math.min(this.detailScrollTop, maxTop);
-      const windowLines = this.detailLines.slice(start, start + DETAIL_VISIBLE_OUTPUT_LINES);
+      const windowLines = this.detailLines.slice(start, start + this.outputRows);
       for (const line of windowLines) lines.push(row(this.theme.fg('toolOutput', line)));
     }
-    while (lines.length < DETAIL_VISIBLE_OUTPUT_LINES + 1) lines.push(row());
+    while (lines.length < this.outputRows + 1) lines.push(row());
     lines.push(bottom);
     lines.push(` ${this.theme.fg('dim', this.outputStatusLine())}`);
     return lines;
@@ -763,10 +1019,10 @@ export class BackgroundTasksManager implements Component {
   private outputStatusLine(): string {
     const total = this.detailLines.length;
     if (!this.detailFollow && total > 0) {
-      const maxTop = Math.max(0, total - DETAIL_VISIBLE_OUTPUT_LINES);
+      const maxTop = Math.max(0, total - this.outputRows);
       const start = Math.min(this.detailScrollTop, maxTop);
-      const end = Math.min(total, start + DETAIL_VISIBLE_OUTPUT_LINES);
-      return `lines ${formatCount(start + 1)}\u2013${formatCount(end)} of ${formatCount(total)} · ↑/↓ PgUp/PgDn scroll · ↓ at bottom follows`;
+      const end = Math.min(total, start + this.outputRows);
+      return `paused · ${this.pendingLines} new lines${this.observedBytes < this.tailTotalBytes ? '+' : ''} · lines ${formatCount(start + 1)}\u2013${formatCount(end)} of ${formatCount(total)} · ↑/↓ PgUp/PgDn scroll · ↓ at bottom follows`;
     }
     const suffix = this.tailTruncated ? ` of ${formatSize(this.tailTotalBytes)}` : '';
     return `following tail ${formatSize(this.tailBytesRead)}${suffix} · ↑ scroll`;

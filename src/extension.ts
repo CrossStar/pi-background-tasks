@@ -6,7 +6,7 @@ import type {
   ThemeColor,
   ToolRenderResultOptions,
 } from '@earendil-works/pi-coding-agent';
-import { formatSize } from '@earendil-works/pi-coding-agent';
+import { copyToClipboard, formatSize } from '@earendil-works/pi-coding-agent';
 import { Text, type KeyId } from '@earendil-works/pi-tui';
 import { Type, type Static } from 'typebox';
 import {
@@ -370,6 +370,17 @@ export default function backgroundTasksExtension(pi: ExtensionAPI): void {
         (tui, theme, _keybindings, done) => {
           const managerOptions = {
             getTasks: () => registry.allTasks(),
+            getHeight: () => Math.max(12, Math.floor(tui.terminal.rows * 0.85) - 2),
+            copyText: copyToClipboard,
+            openOutput: async (task: BackgroundTaskForUi) => {
+              const command = process.platform === 'win32' ? 'powershell.exe'
+                : process.platform === 'darwin' ? 'open' : 'xdg-open';
+              const args = process.platform === 'win32'
+                ? ['-NoProfile', '-NonInteractive', '-Command', `Invoke-Item -LiteralPath '${task.outputAbsPath.replace(/'/g, "''")}'`]
+                : [task.outputAbsPath];
+              const result = await pi.exec(command, args, { timeout: 10000 });
+              if (result.code !== 0) throw new Error(result.stderr || `Open file exited ${result.code}`);
+            },
             stopTask: async (task: BackgroundTaskForUi) => {
               await registry.stopTask(registry.resolveTask(task.id), 'user');
               updateUi(ctx);
@@ -426,8 +437,8 @@ export default function backgroundTasksExtension(pi: ExtensionAPI): void {
           overlayOptions: {
             anchor: 'bottom-center',
             width: '96%',
-            minWidth: 64,
-            maxHeight: '60%',
+            minWidth: 32,
+            maxHeight: '85%',
             margin: { bottom: 1, left: 1, right: 1 },
           },
         },

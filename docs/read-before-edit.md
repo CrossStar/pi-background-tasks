@@ -65,6 +65,7 @@ Every production file under `src/**` and `extensions/**` has exactly one primary
 | `src/fusion-extension.ts` | [subsystems/fusion](./subsystems/fusion.md) |
 | `src/ui/background-tasks-manager.ts` | [subsystems/host-ui-and-telemetry](./subsystems/host-ui-and-telemetry.md) |
 | `src/ui/fusion-model-selector.ts` | [subsystems/fusion](./subsystems/fusion.md) |
+| `src/ui/log-search.ts` | [subsystems/host-ui-and-telemetry](./subsystems/host-ui-and-telemetry.md) |
 
 ## Public surfaces
 

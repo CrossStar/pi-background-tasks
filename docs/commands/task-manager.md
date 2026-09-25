@@ -12,8 +12,8 @@ covers_sources: []
 <!-- pi-docs:begin name="command-contract-tasks-bg-tasks" generator="scripts/docs/generate.mjs" -->
 | Command | Description | Provenance |
 | --- | --- | --- |
-| `/tasks` | Open the Claude-like background task manager UI | `src/extension.ts:587` |
-| `/bg-tasks` | Open the background task manager UI | `src/extension.ts:595` |
+| `/tasks` | Open the Claude-like background task manager UI | `src/extension.ts:598` |
+| `/bg-tasks` | Open the background task manager UI | `src/extension.ts:606` |
 <!-- pi-docs:end name="command-contract-tasks-bg-tasks" -->
 
 Open the interactive background task manager. `/tasks` and `/bg-tasks` are aliases.
@@ -31,7 +31,7 @@ Use the task manager when you want the host UI: select tasks, inspect a live out
 
 ## Defaults
 
-- No argument opens the list view.
+- No argument opens the task monitor: list plus selected-task output preview. Wide terminals use two columns; narrow terminals stack them.
 - An exact task id opens detail view for that task and marks it seen in the footer. Unlike `/logs`, `/kill`, and the task tools, this optional UI argument is not prefix-resolved.
 - If there are no running tasks but finished history exists, the list opens in history mode.
 
@@ -60,7 +60,14 @@ Background task manager requires an interactive Pi UI. Use /jobs, /logs, or the 
 
 List view:
 
-- `↑`/`↓`: select.
+- `↑`/`↓`: select and preview output without clearing unread badges.
+- `1` / `2` / `3`: running / all / failed tasks.
+- `/`: enter a literal, case-sensitive keyword and press Enter to search the entire log.
+- `n` / `N`: next / previous match; there is no automatic wrap.
+- `f`: cancel search and resume live following.
+- `v`: view the complete command with wrapping; use arrows or PgUp/PgDn to scroll, Home/End to jump, `y` to copy the original command, and Esc to return.
+- `y` / `p`: copy command / absolute log path.
+- `o`: open the complete log in the default application.
 - `PgUp`/`PgDn`: page selection.
 - `Enter`/`→`: open output detail.
 - `k`: stop selected running task.
@@ -74,7 +81,9 @@ Detail view:
 
 - `←`: return to list.
 - `↑`/`↓`/`PgUp`/`PgDn`: scroll output.
-- `r`: refresh and resume following tail.
+- `r` or `f`: refresh and resume following tail.
+- `v`: view the complete command, with the same scrolling and return controls as the monitor.
+- `/`, `n`, `N`, `y`, `p`, `o`: search and file actions, as in the monitor.
 - `k`: stop running task.
 - `R`: rerun task.
 - `c`/`C`: show output path.
@@ -82,7 +91,7 @@ Detail view:
 
 ## Detail output tail semantics
 
-The detail view reads a UI-only tail buffer of 128 KiB once per second while following. It displays 12 output lines. Scrolling up pauses live following and freezes the buffer so the view stays stable. Scrolling/pageing back to the bottom resumes follow mode; `r` also resumes follow and refreshes. This UI tail is larger than the model-facing log cap and is separate from [`bg_logs`](../tools/bg_logs.md).
+The preview and detail view read a UI-only tail buffer of 128 KiB once per second while following. They display up to 12 output lines, adapting to terminal height. Scrolling up pauses live following and freezes the buffer so the view stays stable. The paused status counts new newline bytes; a `+` means more new bytes remain to scan. Full-log search uses bounded reads, including content older than the tail buffer, and shows the matched byte offset with a bounded excerpt. File modification age describes last observed output, not whether a process is hung. Scrolling/pageing back to the bottom resumes follow mode; `r` also resumes follow and refreshes. This UI tail is larger than the model-facing log cap and is separate from [`bg_logs`](../tools/bg_logs.md).
 
 ## Errors
 
@@ -90,7 +99,7 @@ Stop, stop-all, rerun, and output-read failures are reported inside the dock as 
 
 ## Runtime artifacts
 
-The manager reads task snapshots and output files from the current extension runtime. It does not reattach to detached historical OS processes after Pi shutdown/reload.
+The manager reads task snapshots and output files from the current extension runtime. It reads the current process-supervised registry across reload; it does not adopt historical OS processes after Pi exits.
 
 ## Safety boundaries
 

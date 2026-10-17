@@ -7,6 +7,7 @@ import { delimiter, dirname, join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { createServer } from 'node:http';
 import {
+  initTheme,
   ModelRuntime,
   createAgentSession,
   createEventBus,
@@ -404,6 +405,7 @@ function makeStatusUi(
   statuses: Array<string | undefined>,
   notifications: UiNotification[],
 ): ExtensionUIContext {
+  initTheme('dark');
   return {
     ...baseUi,
     notify: (message, type) => {
@@ -1354,7 +1356,7 @@ console.log(JSON.stringify({ type: "message_end", message: secondMessage }));
         .find((cmd) => cmd.invocationName === 'bg-clear');
       assert.ok(clearCommand);
       await clearCommand.handler('', session.extensionRunner.createCommandContext());
-      assert.equal(statuses.at(-1), undefined);
+      assert.match(statuses.at(-1) ?? '', /bg idle · Shift↓/);
       assert.match(notifications.at(-1)?.message ?? '', /Cleared 1 finished/);
 
       const running = await exec(session, 'bg_run', {
@@ -1614,7 +1616,7 @@ console.log(JSON.stringify({ type: "message_end", message: secondMessage }));
         if (footer?.includes('⬆ v999.0.0 /bg-update')) break;
         await new Promise((resolve) => setTimeout(resolve, 20));
       }
-      assert.match(footer ?? '', /bg \u2b06 v999\.0\.0 \/bg-update/);
+      assert.match(footer ?? '', /bg idle · Shift↓ · \u2b06 v999\.0\.0 \/bg-update/);
 
       // Append-to-active-footer path: segment trails the running/entry-hint status.
       const running = await exec(session, 'bg_run', {

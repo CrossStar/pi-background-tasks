@@ -22,7 +22,7 @@ This subsystem owns the extension entrypoint, command/tool registration, footer 
 
 ## Footer status
 
-The footer widget is updated on task changes and once per second while a session is active. If there are no running tasks and no unseen finished tasks, the background-task footer is cleared unless an update segment is available.
+The footer widget is updated on task changes and once per second while a session is active. The background-task entry remains visible: if there are no running tasks and no unseen finished tasks, it displays `bg idle · Shift↓` (or `focused` while the dock is open). An available update segment is appended. Footer text, manager titles and selected rows use the theme accent foreground without a background fill.
 
 When visible, the footer label includes counts in this order:
 

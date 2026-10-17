@@ -73,13 +73,6 @@ const packageInfo = readPackageInfo(new URL('../package.json', import.meta.url),
 });
 const PACKAGE_NAME = packageInfo.name ?? 'pi-background-tasks';
 const PACKAGE_VERSION = packageInfo.version;
-const LIGHT_BLUE_BG = '\x1b[48;2;183;223;255m';
-const LIGHT_BLUE_FG = '\x1b[38;2;11;70;110m';
-const ANSI_RESET = '\x1b[0m';
-
-function lightBlue(value: string): string {
-  return `${LIGHT_BLUE_BG}${LIGHT_BLUE_FG}${value}${ANSI_RESET}`;
-}
 
 function textContent(text: string) {
   return [{ type: 'text' as const, text }];
@@ -306,15 +299,8 @@ export default function backgroundTasksExtension(pi: ExtensionAPI): void {
       const unseenFinishedCount = unseenFailed.length + unseenStopped.length + unseenDone.length;
       const updateSegment = formatUpdateSegment(latestKnownVersion, PACKAGE_VERSION ?? '');
       ctx.ui.setWidget('background-tasks', undefined);
-      if (running.length === 0 && unseenFinishedCount === 0) {
-        ctx.ui.setStatus(
-          'background-tasks',
-          updateSegment ? lightBlue(` bg ${updateSegment} `) : undefined,
-        );
-        return;
-      }
-
       const parts: string[] = [];
+      if (running.length === 0 && unseenFinishedCount === 0) parts.push('idle');
       if (running.length > 0) parts.push(`${String(running.length)} running`);
       if (unseenFailed.length > 0) parts.push(`${String(unseenFailed.length)} failed`);
       if (unseenStopped.length > 0) parts.push(`${String(unseenStopped.length)} stopped`);
@@ -325,7 +311,7 @@ export default function backgroundTasksExtension(pi: ExtensionAPI): void {
       const segments = [...parts, entryHint];
       if (updateSegment) segments.push(updateSegment);
       const label = ` bg ${segments.join(' · ')} `;
-      ctx.ui.setStatus('background-tasks', lightBlue(label));
+      ctx.ui.setStatus('background-tasks', ctx.ui.theme.fg('accent', label));
     } catch (error) {
       console.error(
         `[background-tasks] UI update failed: ${error instanceof Error ? error.message : String(error)}`,

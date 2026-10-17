@@ -36,8 +36,6 @@ const STATUS_INTERVAL_MS = 1000;
 const DETAIL_TAIL_BYTES = 128 * 1024;
 const LIST_VISIBLE_ROWS = 14;
 const DETAIL_VISIBLE_OUTPUT_LINES = 12;
-const LIGHT_BLUE_BG = '\x1b[48;2;183;223;255m';
-const LIGHT_BLUE_FG = '\x1b[38;2;11;70;110m';
 const LIGHT_BLUE_BORDER = '\x1b[38;2;83;160;215m';
 const ANSI_RESET = '\x1b[0m';
 
@@ -81,10 +79,6 @@ function toOutputLines(content: string): string[] {
 
 function padAnsi(value: string, width: number): string {
   return value + ' '.repeat(Math.max(0, width - visibleWidth(value)));
-}
-
-function lightBlue(value: string): string {
-  return `${LIGHT_BLUE_BG}${LIGHT_BLUE_FG}${value}${ANSI_RESET}`;
 }
 
 function blueBorder(value: string): string {
@@ -835,10 +829,10 @@ export class BackgroundTasksManager implements Component {
     const bottom = blueBorder(`╰${'─'.repeat(inner)}╯`);
     const row = (content = '') =>
       `${blueBorder('│')}${padAnsi(truncateToWidth(content, inner), inner)}${blueBorder('│')}`;
-    const header = lightBlue(padAnsi(` ${title}`, inner));
+    const header = this.theme.fg('accent', padAnsi(` ${title}`, inner));
     const subtitleLine = subtitle
-      ? lightBlue(padAnsi(` ${subtitle}`, inner))
-      : lightBlue(' '.repeat(inner));
+      ? this.theme.fg('accent', padAnsi(` ${subtitle}`, inner))
+      : ' '.repeat(inner);
     const lines = [top, row(header), row(subtitleLine), row()];
     const bodyLimit = this.options.getHeight ? Math.max(1, this.options.getHeight() - 7) : body.length;
     if (this.logBounds) {
@@ -928,7 +922,7 @@ export class BackgroundTasksManager implements Component {
         const exit =
           task.status !== 'running' ? this.theme.fg('dim', formatExitCodeText(task.exitCode)) : '';
         let row = ` ${pointer} ${unreadMark} ${name} ${this.theme.fg('dim', task.id)} ${this.theme.fg('dim', '·')} ${status}${exit} ${this.theme.fg('dim', `${runtime} ${size} ${outputAge}`)}${activityText}`;
-        if (selected) row = lightBlue(padAnsi(truncateToWidth(row, width - 4), width - 4));
+        if (selected) row = this.theme.fg('accent', padAnsi(truncateToWidth(row, width - 4), width - 4));
         body.push(row);
       }
       if (tasks.length > this.listRows) {

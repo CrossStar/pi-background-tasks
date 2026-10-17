@@ -17,7 +17,7 @@
 安装已发布的 Git 版本：
 
 ```bash
-pi install git:github.com/CrossStar/pi-background-tasks@v2.7.0
+pi install git:github.com/CrossStar/pi-background-tasks@v2.7.1
 ```
 
 跟随本仓库主分支，或只安装到当前项目：
@@ -185,7 +185,7 @@ PTY 测试是否实际执行取决于宿主的交互输入能力；跳过不能�
 | 项目 | 内容 |
 | --- | --- |
 | 包名 | `pi-background-tasks` |
-| 版本 | `2.7.0` |
+| 版本 | `2.7.1` |
 | Node 版本要求 | `>=22.19.0` |
 | Pi 扩展入口 | `./extensions/anthropic-attribution.ts`, `./extensions/background-tasks.ts` |
 | 项目图标 | [logo.png](logo.png) |

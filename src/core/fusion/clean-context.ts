@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
-import { canonicalJson } from '../attested-pi-run.js';
-import { normalizeFusionDeclaredSources, type DeclaredFusionSourceInput } from './source-policy.js';
+import { canonicalJson } from '../attested-pi-run.ts';
+import { normalizeFusionDeclaredSources, type DeclaredFusionSourceInput } from './source-policy.ts';
 import {
   FUSION_INPUT_SCHEMA_VERSION,
   FusionError,
@@ -9,7 +9,7 @@ import {
   type FusionDeclaredSourceV1,
   type FusionSource,
   type FusionWorkflowId,
-} from './types.js';
+} from './types.ts';
 
 export interface BuildFusionCleanTaskInputOptions {
   cwd: string;

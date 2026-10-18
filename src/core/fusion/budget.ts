@@ -12,7 +12,7 @@ import {
   unknownOutputContractSegment,
   allowedInputTokens,
   isUsableContextWindow,
-} from '../context/token-budget.js';
+} from '../context/token-budget.ts';
 import {
   buildBlindEvaluationInput,
   buildCandidatePrompt,
@@ -21,14 +21,14 @@ import {
   buildMergeInput,
   buildMergePrompt,
   type AnonymousFusionCandidate,
-} from './prompts.js';
-import { FUSION_REASON_WORKFLOW, type FusionWorkflowProfile } from './workflows.js';
+} from './prompts.ts';
+import { FUSION_REASON_WORKFLOW, type FusionWorkflowProfile } from './workflows.ts';
 import {
   FUSION_CANDIDATE_MAX_OUTPUT_BYTES,
   FUSION_DIAGNOSTICS_MAX_BYTES,
   FUSION_EVALUATION_MAX_OUTPUT_BYTES,
   FUSION_MERGE_MAX_OUTPUT_BYTES,
-} from './output-contract.js';
+} from './output-contract.ts';
 export {
   FUSION_CANDIDATE_MAX_OUTPUT_BYTES,
   FUSION_DIAGNOSTICS_MAX_BYTES,
@@ -36,7 +36,7 @@ export {
   FUSION_MERGE_MAX_OUTPUT_BYTES,
   assertChildOutputWithinContract,
   fusionOutputContractBytes,
-} from './output-contract.js';
+} from './output-contract.ts';
 import {
   FUSION_BUDGET_PLAN_SCHEMA_VERSION,
   FUSION_CALIBRATION_VIOLATION_SCHEMA_VERSION,
@@ -64,7 +64,7 @@ import {
   type FusionChildRunResult,
   type ResolvedFusionModel,
   type ResolvedFusionModels,
-} from './types.js';
+} from './types.ts';
 
 export const FUSION_CALIBRATED_BYTES_PER_TOKEN = TOKEN_BUDGET_FAMILY_CALIBRATIONS;
 

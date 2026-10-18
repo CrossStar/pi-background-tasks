@@ -13,13 +13,13 @@ import {
   type TokenBudgetFamily,
   type TokenBudgetFamilyCalibration,
   type TokenBudgetRateSource,
-} from '../context/token-budget.js';
+} from '../context/token-budget.ts';
 import {
   DELEGATE_BUDGET_PLAN_SCHEMA_VERSION,
   DelegateError,
   type DelegateLimits,
   type DelegatePinnedRoute,
-} from './types.js';
+} from './types.ts';
 
 /**
  * Delegate budgeting.

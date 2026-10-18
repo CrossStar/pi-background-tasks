@@ -3,15 +3,15 @@ import { existsSync } from 'node:fs';
 import { mkdir } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { ParentContextSource } from '../context/parent-snapshot.js';
+import type { ParentContextSource } from '../context/parent-snapshot.ts';
 import {
   assertDelegateAdmission,
   planDelegateAdmission,
   resolveDelegateLimits,
   type DelegateAdmissionPlanV1,
   type DelegateLimitOverrides,
-} from './budget.js';
-import { buildDelegateSeed, type BuiltDelegateSeed } from './seed.js';
+} from './budget.ts';
+import { buildDelegateSeed, type BuiltDelegateSeed } from './seed.ts';
 import {
   DELEGATE_CAPABILITIES,
   DELEGATE_TOOL_NAME,
@@ -21,13 +21,13 @@ import {
   type DelegateLimits,
   type DelegatePinnedRoute,
   type DelegateRoute,
-} from './types.js';
+} from './types.ts';
 import {
   DELEGATE_REQUIRED_HOOK_GUARANTEES,
   evaluateDelegateHookContract,
   parseDelegateHookContractEvidence,
   type DelegateHookContractEvidence,
-} from './hook-contract.js';
+} from './hook-contract.ts';
 
 /**
  * Delegate launch preflight and argv construction.

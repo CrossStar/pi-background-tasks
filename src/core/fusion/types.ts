@@ -6,7 +6,7 @@ import type {
   TokenBudgetFamily,
   TokenBudgetFamilyCalibration,
   TokenBudgetRateSource,
-} from '../context/token-budget.js';
+} from '../context/token-budget.ts';
 
 export type FusionThinkingLevel = 'off' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';
 

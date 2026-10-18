@@ -9,29 +9,29 @@ import {
   writeSync,
 } from 'node:fs';
 import { dirname, isAbsolute } from 'node:path';
-import { parseJsonText } from './core/common.js';
+import { parseJsonText } from './core/common.ts';
 import type { ExtensionAPI } from '@earendil-works/pi-coding-agent';
 import { Type, type Static } from 'typebox';
 import {
   FUSION_TOOL_CALL_LOG_SCHEMA_VERSION,
   FUSION_WEB_FETCH_TOOL_NAME,
   type FusionToolCallLogRecord,
-} from './core/fusion/types.js';
+} from './core/fusion/types.ts';
 import {
   fusionWebFetch,
   FusionWebFetchError,
   FUSION_WEB_FETCH_TIMEOUT_MS,
-} from './core/fusion/web-fetch.js';
+} from './core/fusion/web-fetch.ts';
 import {
   canonicalizeFusionPublicUrl,
   parseFusionSourcePolicy,
-} from './core/fusion/source-policy.js';
+} from './core/fusion/source-policy.ts';
 import {
   applyFusionClaudePromptCachingScopeHeader,
   nonAnthropicFusionCacheObservation,
   normalizeFusionClaudeCachePayload,
   type FusionClaudeCacheObservation,
-} from './core/fusion/claude-cache.js';
+} from './core/fusion/claude-cache.ts';
 import {
   FUSION_CANDIDATE_OUTPUT_RECOVERY_PATH_ENV,
   FUSION_CHILD_MAX_PROVIDER_REQUESTS,
@@ -53,12 +53,12 @@ import {
   type FusionChildSettlementRecord,
   type FusionRuntimeGuardCode,
   type FusionRuntimeGuardRecord,
-} from './core/fusion/child-protocol.js';
+} from './core/fusion/child-protocol.ts';
 import {
   FUSION_CANDIDATE_MAX_OUTPUT_BYTES,
   FUSION_CANDIDATE_OUTPUT_COMPRESSION_PROMPT,
   fusionJsonRenderedTextBytes,
-} from './core/fusion/output-contract.js';
+} from './core/fusion/output-contract.ts';
 
 export {
   FUSION_CLAUDE_CACHE_BREAKPOINT_LIMIT,
@@ -74,7 +74,7 @@ export {
   type FusionClaudeCacheObservation,
   type FusionClaudeCachePolicySource,
   type FusionClaudeCacheRetention,
-} from './core/fusion/claude-cache.js';
+} from './core/fusion/claude-cache.ts';
 
 export {
   FUSION_CANDIDATE_OUTPUT_RECOVERY_PATH_ENV,
@@ -102,13 +102,13 @@ export {
   type FusionChildTextBlockMetadata,
   type FusionRuntimeGuardCode,
   type FusionRuntimeGuardRecord,
-} from './core/fusion/child-protocol.js';
+} from './core/fusion/child-protocol.ts';
 
 export {
   FUSION_CANDIDATE_MAX_OUTPUT_BYTES,
   FUSION_CANDIDATE_OUTPUT_COMPRESSION_PROMPT,
   fusionJsonRenderedTextBytes,
-} from './core/fusion/output-contract.js';
+} from './core/fusion/output-contract.ts';
 
 const FUSION_CHILD_O_NOFOLLOW = typeof constants.O_NOFOLLOW === 'number' ? constants.O_NOFOLLOW : 0;
 

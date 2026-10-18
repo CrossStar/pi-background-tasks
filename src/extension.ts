@@ -30,29 +30,29 @@ import {
   type BgTaskSnapshot,
   type StartAttestedPiTaskOptions,
   type StartTaskOptions,
-} from './core/common.js';
+} from './core/common.ts';
 import {
   fetchLatestVersion,
   readPackageInfo,
   type FetchLatestVersionOptions,
-} from './core/update-check.js';
+} from './core/update-check.ts';
 import {
   BackgroundTaskRegistry,
   acquireProcessRegistry,
   releaseProcessRegistry,
   type BackgroundTaskContext,
-} from './core/registry.js';
+} from './core/registry.ts';
 import {
   installBackgroundTaskExtensionApi,
   type BackgroundTaskExtensionService,
-} from './core/extension-api.js';
+} from './core/extension-api.ts';
 import {
   BackgroundTasksManager,
   type BackgroundTaskForUi,
   type TaskManagerResult,
-} from './ui/background-tasks-manager.js';
-import { registerFusionExtension } from './fusion-extension.js';
-import { registerDelegateExtension } from './delegate-extension.js';
+} from './ui/background-tasks-manager.ts';
+import { registerFusionExtension } from './fusion-extension.ts';
+import { registerDelegateExtension } from './delegate-extension.ts';
 
 /**
  * Project-local Pi background task manager.

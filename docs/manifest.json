@@ -6,10 +6,10 @@
         "src/core/extension-api.ts"
       ],
       "doc_id": "api/eventbus-v1",
-      "notes": "Reviewed EventBus channels, closed schemas, operations, request correlation and rejection, close unsubscribe behavior, terminal ordering, latched publication, retry semantics, and at-least-once deduplication guidance.",
+      "notes": "Re-reviewed after import-specifier-only change (.js -> .ts relative imports) in src/core/extension-api.ts; EventBus channels, closed schemas, operations, request correlation and rejection, close unsubscribe behavior, terminal ordering, latched publication, retry semantics, and at-least-once deduplication guidance are unchanged.",
       "rel": "docs/api/eventbus-v1.md",
       "required": true,
-      "reviewer": "gpt-5.5-final-eventbus-reviewer",
+      "reviewer": "claude-opus-5-5-eventbus-reviewer",
       "state": "pass"
     },
     {

@@ -34,7 +34,7 @@ import {
   type TaskStatus,
   type TaskTokenUsage,
   type TaskToolUsage,
-} from './common.js';
+} from './common.ts';
 import {
   ATTESTED_TASK_ID_PATTERN,
   attestedPiChildEnv,
@@ -51,20 +51,20 @@ import {
   spawnAndCapturePi,
   writeFileFsynced,
   writeJsonAtomic,
-} from './attested-pi-run.js';
+} from './attested-pi-run.ts';
 import {
   assertWindowsCommandLineWithinLimit,
   piLaunchArgv,
   resolvePiLaunch,
   type PiLaunchSpec,
-} from './pi-launch.js';
-import { resolveAnthropicAttributionExtensionPath } from './anthropic-attribution-path.js';
+} from './pi-launch.ts';
+import { resolveAnthropicAttributionExtensionPath } from './anthropic-attribution-path.ts';
 import {
   runWindowsTaskkill,
   type TaskkillOutcome,
   type WindowsKillPhase,
   type WindowsTaskkillOptions,
-} from './windows-taskkill.js';
+} from './windows-taskkill.ts';
 
 export const MAX_OUTPUT_BYTES = Number(process.env['PI_BG_MAX_OUTPUT_BYTES'] ?? 20 * 1024 * 1024);
 export const KILL_GRACE_MS = 3000;

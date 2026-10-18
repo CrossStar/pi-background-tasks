@@ -1,1 +1,1 @@
-export { default } from '../src/fusion-child-extension.js';
+export { default } from '../src/fusion-child-extension.ts';

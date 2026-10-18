@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { canonicalJson } from '../attested-pi-run.js';
+import { canonicalJson } from '../attested-pi-run.ts';
 import {
   DELEGATE_RECEIPT_SCHEMA_VERSION,
   DELEGATE_RESULT_PACKAGE_SCHEMA_VERSION,
@@ -9,7 +9,7 @@ import {
   type DelegateRouteAttestation,
   type DelegateSpillReceipt,
   type DelegateUsageReport,
-} from './types.js';
+} from './types.ts';
 
 /**
  * The delegate answer data plane.

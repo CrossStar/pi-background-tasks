@@ -1,6 +1,6 @@
 import { existsSync } from 'node:fs';
 import { open, stat } from 'node:fs/promises';
-import { searchLog } from './log-search.js';
+import { searchLog } from './log-search.ts';
 import type { Theme } from '@earendil-works/pi-coding-agent';
 import { formatSize } from '@earendil-works/pi-coding-agent';
 import {
@@ -20,7 +20,7 @@ import {
   taskDisplayName,
   truncateChars,
   type BgTaskSnapshot,
-} from '../core/common.js';
+} from '../core/common.ts';
 
 export interface TaskManagerTheme {
   fg: Theme['fg'];

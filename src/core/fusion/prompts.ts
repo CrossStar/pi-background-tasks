@@ -1,5 +1,5 @@
-import { canonicalJson } from '../attested-pi-run.js';
-import { FUSION_CANDIDATE_OUTPUT_CONTRACT_INSTRUCTION } from './output-contract.js';
+import { canonicalJson } from '../attested-pi-run.ts';
+import { FUSION_CANDIDATE_OUTPUT_CONTRACT_INSTRUCTION } from './output-contract.ts';
 import {
   FUSION_EVALUATION_SCHEMA_VERSION,
   FUSION_VALIDATE_CAPABILITY,
@@ -10,7 +10,7 @@ import {
   type FusionEvaluationV1,
   type FusionCapability,
   type FusionValidationFindingRecord,
-} from './types.js';
+} from './types.ts';
 
 /**
  * Shared description of the canonical input shape so every child interprets the

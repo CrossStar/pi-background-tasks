@@ -2,14 +2,14 @@ import { createHash } from 'node:crypto';
 import { constants } from 'node:fs';
 import { open } from 'node:fs/promises';
 import { isIP } from 'node:net';
-import { canonicalJson } from '../attested-pi-run.js';
-import { isJsonObject, parseJsonText } from '../common.js';
+import { canonicalJson } from '../attested-pi-run.ts';
+import { isJsonObject, parseJsonText } from '../common.ts';
 import {
   FUSION_SOURCE_POLICY_SCHEMA_VERSION,
   FusionError,
   type FusionDeclaredSourceV1,
   type FusionSourcePolicyV1,
-} from './types.js';
+} from './types.ts';
 
 const SHA256_HEX = /^[0-9a-f]{64}$/;
 const O_NOFOLLOW = typeof constants.O_NOFOLLOW === 'number' ? constants.O_NOFOLLOW : 0;

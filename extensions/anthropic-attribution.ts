@@ -1,1 +1,1 @@
-export { default } from '../src/core/anthropic-attribution.js';
+export { default } from '../src/core/anthropic-attribution.ts';

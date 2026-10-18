@@ -31,14 +31,14 @@ import {
   type FusionChildSettlementRecord,
   type FusionRuntimeGuardCode,
   type FusionRuntimeGuardRecord,
-} from './child-protocol.js';
+} from './child-protocol.ts';
 import {
   FUSION_CLAUDE_CACHE_BREAKPOINT_LIMIT,
   FUSION_CLAUDE_CACHE_OBSERVATION_SCHEMA_VERSION,
   FUSION_CLAUDE_CACHE_RETENTION_ENV,
   type FusionClaudeCacheObservation,
   type FusionClaudeCacheRetention,
-} from './claude-cache.js';
+} from './claude-cache.ts';
 import {
   FUSION_FORBIDDEN_TOOLS,
   FUSION_NO_TOOLS_CAPABILITY,
@@ -59,20 +59,20 @@ import {
   type FusionToolCallTrace,
   type FusionUsage,
   type ResolvedFusionModel,
-} from './types.js';
-import { isJsonObject, parseJsonText } from '../common.js';
+} from './types.ts';
+import { isJsonObject, parseJsonText } from '../common.ts';
 import {
   FUSION_CANDIDATE_MAX_OUTPUT_BYTES,
   fusionJsonRenderedTextBytes,
-} from './output-contract.js';
-import { canonicalizeFusionPublicUrl, readFusionSourcePolicyFile } from './source-policy.js';
+} from './output-contract.ts';
+import { canonicalizeFusionPublicUrl, readFusionSourcePolicyFile } from './source-policy.ts';
 import {
   assertWindowsCommandLineWithinLimit,
   piLaunchArgv,
   resolvePiLaunch,
   type PiLaunchDependencies,
-} from '../pi-launch.js';
-import { resolveAnthropicAttributionExtensionPath } from '../anthropic-attribution-path.js';
+} from '../pi-launch.ts';
+import { resolveAnthropicAttributionExtensionPath } from '../anthropic-attribution-path.ts';
 
 // The response cap now applies to one final full answer, not cumulative Pi JSON events.
 export const FUSION_CHILD_STDOUT_LIMIT_BYTES = 32 * 1024 * 1024;

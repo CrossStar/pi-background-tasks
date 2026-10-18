@@ -1,7 +1,7 @@
 import type { Theme } from '@earendil-works/pi-coding-agent';
 import { Key, matchesKey, truncateToWidth, type Component } from '@earendil-works/pi-tui';
-import { CURRENT_MODEL_SELECTION, defaultFusionModelConfig } from '../core/fusion/config.js';
-import type { FusionModelConfigV1, FusionModelSelection } from '../core/fusion/types.js';
+import { CURRENT_MODEL_SELECTION, defaultFusionModelConfig } from '../core/fusion/config.ts';
+import type { FusionModelConfigV1, FusionModelSelection } from '../core/fusion/types.ts';
 
 export const FUSION_MODEL_SLOT_IDS = [
   'candidate-1',

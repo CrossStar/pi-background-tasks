@@ -8,16 +8,16 @@ import type {
 } from '@earendil-works/pi-coding-agent';
 import { Text } from '@earendil-works/pi-tui';
 import { Type, type Static } from 'typebox';
-import type { BgTask, BgTaskSnapshot, StartDelegateTaskOptions } from './core/common.js';
-import { truncateChars } from './core/common.js';
-import { sha256Buffer } from './core/attested-pi-run.js';
-import { readFusionCommittedResult, readFusionFailureResult } from './core/fusion/result-package.js';
+import type { BgTask, BgTaskSnapshot, StartDelegateTaskOptions } from './core/common.ts';
+import { truncateChars } from './core/common.ts';
+import { sha256Buffer } from './core/attested-pi-run.ts';
+import { readFusionCommittedResult, readFusionFailureResult } from './core/fusion/result-package.ts';
 import {
   cloneFusionUsage,
   type FusionFailureResultView,
   type FusionUsage,
   type FusionWorkflowId,
-} from './core/fusion/types.js';
+} from './core/fusion/types.ts';
 import {
   DELEGATE_AUTO_DELIVER_MODES,
   DELEGATE_CAPABILITIES,
@@ -31,22 +31,22 @@ import {
   type DelegateBudgetRouteSource,
   type DelegateExtensionMode,
   type DelegateRoute,
-} from './core/delegate/types.js';
+} from './core/delegate/types.ts';
 import {
   DELEGATE_INLINE_ANSWER_BYTES,
   DELEGATE_DEFAULT_MAX_TOOL_CALLS,
   DELEGATE_DEFAULT_MAX_TURNS,
   DELEGATE_DEFAULT_TIMEOUT_SECONDS,
-} from './core/delegate/budget.js';
-import { resolveDelegateRoute } from './core/delegate/launch.js';
+} from './core/delegate/budget.ts';
+import { resolveDelegateRoute } from './core/delegate/launch.ts';
 import {
   decideDelegateDelivery,
   evaluateDelegateTerminal,
   inlineTooLarge,
   prepareDelegateLaunch,
-} from './core/delegate/runner.js';
-import { loadDelegateHookContractEvidence } from './core/delegate/launch.js';
-import type { DelegateHookContractEvidence } from './core/delegate/hook-contract.js';
+} from './core/delegate/runner.ts';
+import { loadDelegateHookContractEvidence } from './core/delegate/launch.ts';
+import type { DelegateHookContractEvidence } from './core/delegate/hook-contract.ts';
 
 /**
  * `bg_delegate` and `bg_result` registration.

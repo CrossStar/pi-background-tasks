@@ -1,4 +1,4 @@
-import { FusionError, type FusionStage } from './types.js';
+import { FusionError, type FusionStage } from './types.ts';
 
 /** Hard output contracts are measured over the JSON rendering embedded downstream. */
 export const FUSION_CANDIDATE_MAX_OUTPUT_BYTES = 48 * 1024;

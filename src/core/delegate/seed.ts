@@ -1,15 +1,15 @@
 import { createHash } from 'node:crypto';
-import { canonicalJson } from '../attested-pi-run.js';
+import { canonicalJson } from '../attested-pi-run.ts';
 import {
   UnsupportedConversationBlockError,
   projectVisibleConversationV2,
   type ProjectedConversationV2,
-} from '../context/visible-conversation-v2.js';
+} from '../context/visible-conversation-v2.ts';
 import {
   snapshotParentConversation,
   type ParentContextSource,
   type ParentSnapshotOptions,
-} from '../context/parent-snapshot.js';
+} from '../context/parent-snapshot.ts';
 import {
   DELEGATE_BRANCH_FILTER_ID,
   DELEGATE_CONTEXT_POLICY_ID,
@@ -27,7 +27,7 @@ import {
   type DelegatePinnedRoute,
   type DelegateSeedV1,
   type DelegateTaskDirective,
-} from './types.js';
+} from './types.ts';
 
 export interface BuildDelegateSeedOptions {
   taskId: string;

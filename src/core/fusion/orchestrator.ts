@@ -1,15 +1,15 @@
 import { createHash, randomBytes as nodeRandomBytes } from 'node:crypto';
-import { canonicalJson } from '../attested-pi-run.js';
-import { parseJsonText } from '../common.js';
-import { FUSION_BUDGET_POLICY, FusionBudget } from './budget.js';
-import { assertChildOutputWithinContract } from './output-contract.js';
+import { canonicalJson } from '../attested-pi-run.ts';
+import { parseJsonText } from '../common.ts';
+import { FUSION_BUDGET_POLICY, FusionBudget } from './budget.ts';
+import { assertChildOutputWithinContract } from './output-contract.ts';
 import {
   FusionArtifactStore,
   buildFusionFailureSummary,
   buildFusionRunProgress as deriveFusionRunProgress,
   type CreateFusionArtifactStoreOptions,
   type RecordFusionFailedAttemptInput,
-} from './artifacts.js';
+} from './artifacts.ts';
 import {
   boundedEvaluationErrors,
   formatEvaluationErrors,
@@ -18,8 +18,8 @@ import {
   renderValidatedFusionValidationReport,
   validateFusionEvaluation,
   validateFusionFindingAccounting,
-} from './evaluation.js';
-import { FusionChildRunError, runPiChild, type RunPiChildOptions } from './pi-child.js';
+} from './evaluation.ts';
+import { FusionChildRunError, runPiChild, type RunPiChildOptions } from './pi-child.ts';
 import {
   buildBlindEvaluationInput,
   buildCandidatePrompt,
@@ -28,13 +28,13 @@ import {
   buildMergeInput,
   buildMergePrompt,
   type AnonymousFusionCandidate,
-} from './prompts.js';
+} from './prompts.ts';
 import {
   assertWorkflowCapability,
   fusionWorkflowProfile,
   type FusionWorkflowProfile,
-} from './workflows.js';
-import { buildFusionSourcePolicy, sourcePolicyCanonicalBytes } from './source-policy.js';
+} from './workflows.ts';
+import { buildFusionSourcePolicy, sourcePolicyCanonicalBytes } from './source-policy.ts';
 import {
   FUSION_INPUT_SCHEMA_VERSION,
   FUSION_NO_TOOLS_CAPABILITY,
@@ -61,7 +61,7 @@ import {
   type FusionValidationFindingRecord,
   type ResolvedFusionModel,
   type ResolvedFusionModels,
-} from './types.js';
+} from './types.ts';
 
 export type FusionChildRunner = (options: RunPiChildOptions) => Promise<FusionChildRunResult>;
 export type FusionProgressSink = (event: FusionProgressEvent) => void;
@@ -176,7 +176,7 @@ function asFusionError(error: unknown, artifactDir: string, messageOverride?: st
   });
 }
 
-export { buildFusionRunProgress } from './artifacts.js';
+export { buildFusionRunProgress } from './artifacts.ts';
 
 function formatFusionRunStage(name: string, stage: FusionRunProgress['candidates']): string {
   const notStarted =

@@ -1,10 +1,10 @@
 import { createHash } from 'node:crypto';
 import type { Usage } from '@earendil-works/pi-ai';
-import type { FusionClaudeCacheObservation } from './claude-cache.js';
+import type { FusionClaudeCacheObservation } from './claude-cache.ts';
 import {
   FUSION_CANDIDATE_MAX_OUTPUT_BYTES,
   fusionJsonRenderedTextBytes,
-} from './output-contract.js';
+} from './output-contract.ts';
 
 export const FUSION_CHILD_RESULT_SCHEMA_VERSION =
   'pi-background-tasks.fusion-child-result.v4' as const;

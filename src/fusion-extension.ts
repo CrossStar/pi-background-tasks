@@ -14,30 +14,30 @@ import {
   loadFusionModelConfig,
   resolveFusionModels,
   saveFusionModelConfig,
-} from './core/fusion/config.js';
-import * as FusionContextModule from './core/fusion/context.js';
-import type { BuiltFusionCanonicalInput } from './core/fusion/context.js';
+} from './core/fusion/config.ts';
+import * as FusionContextModule from './core/fusion/context.ts';
+import type { BuiltFusionCanonicalInput } from './core/fusion/context.ts';
 import {
   FUSION_INVESTIGATE,
   FUSION_REASON,
   FUSION_RESEARCH,
   FUSION_VALIDATE,
   type FusionWorkflowProfile,
-} from './core/fusion/workflows.js';
+} from './core/fusion/workflows.ts';
 import {
   buildCleanFusionCanonicalInput,
   type BuiltFusionCleanTaskCanonicalInput,
-} from './core/fusion/clean-context.js';
-import { canonicalizeFusionPublicUrl } from './core/fusion/source-policy.js';
-import { canonicalJson } from './core/attested-pi-run.js';
+} from './core/fusion/clean-context.ts';
+import { canonicalizeFusionPublicUrl } from './core/fusion/source-policy.ts';
+import { canonicalJson } from './core/attested-pi-run.ts';
 import type {
   BgTask,
   BgTaskSnapshot,
   FusionTaskFacts,
   JsonObject,
   StartManagedTaskOptions,
-} from './core/common.js';
-import { FusionOrchestrator } from './core/fusion/orchestrator.js';
+} from './core/common.ts';
+import { FusionOrchestrator } from './core/fusion/orchestrator.ts';
 import {
   FUSION_LEGACY_RESULT_SCHEMA_VERSION,
   FUSION_RESULT_SCHEMA_VERSION,
@@ -48,12 +48,12 @@ import {
   type FusionProgressEvent,
   type FusionResultDetails,
   type FusionRunResult,
-} from './core/fusion/types.js';
+} from './core/fusion/types.ts';
 import {
   FusionModelSelector,
   type FusionModelChoice,
   type FusionModelSelectorResult,
-} from './ui/fusion-model-selector.js';
+} from './ui/fusion-model-selector.ts';
 
 const FUSION_RESULT_MESSAGE_TYPE = 'fusion-result';
 const FUSION_PROGRESS_SCHEMA_VERSION = 'pi-background-tasks.fusion-progress.v1';

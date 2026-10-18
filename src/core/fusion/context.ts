@@ -1,19 +1,19 @@
 import { createHash } from 'node:crypto';
-import { canonicalJson } from '../attested-pi-run.js';
+import { canonicalJson } from '../attested-pi-run.ts';
 import {
   projectVisibleConversationV2,
   type OmittedRunCounts,
   type ProjectedConversationV2,
   type ProjectionEntry,
-} from '../context/visible-conversation-v2.js';
+} from '../context/visible-conversation-v2.ts';
 import {
   snapshotParentConversation,
   type ParentContextSource,
   type ParentSnapshotOptions,
   type ReadonlyParentSessionManager,
-} from '../context/parent-snapshot.js';
+} from '../context/parent-snapshot.ts';
 import type { Message } from '@earendil-works/pi-ai';
-import { FUSION_REASON_TOOL_NAME } from './workflows.js';
+import { FUSION_REASON_TOOL_NAME } from './workflows.ts';
 import {
   FUSION_BRANCH_FILTER_ID,
   FUSION_COMMAND_CONTEXT_POLICY_ID,
@@ -33,7 +33,7 @@ import {
   type FusionProjectionOmissionCounts,
   type FusionRequestAuthority,
   type FusionSource,
-} from './types.js';
+} from './types.ts';
 
 /**
  * Re-exported from the workflow registry, which owns every workflow's tool name.
@@ -45,7 +45,7 @@ export {
   FUSION_INVESTIGATE_TOOL_NAME,
   FUSION_RESEARCH_TOOL_NAME,
   FUSION_VALIDATE_TOOL_NAME,
-} from './workflows.js';
+} from './workflows.ts';
 
 /** Retained for source compatibility; Fusion's session access is the shared adapter. */
 export type FusionReadonlySessionManager = ReadonlyParentSessionManager;

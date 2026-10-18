@@ -4,7 +4,7 @@ import {
   type SessionEntry,
 } from '@earendil-works/pi-coding-agent';
 import type { Message } from '@earendil-works/pi-ai';
-import { isJsonObject, type JsonObject } from '../common.js';
+import { isJsonObject, type JsonObject } from '../common.ts';
 
 /**
  * Pi session adapter shared by every consumer of the visible-conversation

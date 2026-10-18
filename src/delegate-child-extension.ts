@@ -12,19 +12,19 @@ import {
   type DelegateSeedV1,
   type DelegateSpillReceipt,
   type DelegateUsageReport,
-} from './core/delegate/types.js';
-import { verifyDelegateSeedBytes } from './core/delegate/seed.js';
+} from './core/delegate/types.ts';
+import { verifyDelegateSeedBytes } from './core/delegate/seed.ts';
 import {
   DELEGATE_FINALIZATION_INPUT_RESERVE_TOKENS,
   DELEGATE_FINALIZATION_TRIGGER_TOKENS,
   evaluateDelegateRuntimeBudget,
-} from './core/delegate/budget.js';
-import { utf8ByteClassBreakdown } from './core/context/token-budget.js';
+} from './core/delegate/budget.ts';
+import { utf8ByteClassBreakdown } from './core/context/token-budget.ts';
 import {
   assertWellFormedUtf8,
   buildDelegateResultPackage,
   serializeDelegateResultPackage,
-} from './core/delegate/result-package.js';
+} from './core/delegate/result-package.ts';
 
 /**
  * Package-owned delegate child extension.

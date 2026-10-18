@@ -7,15 +7,15 @@ import type {
   BackgroundTaskChildProcess,
   BackgroundTaskContext,
   BackgroundTaskSpawn,
-} from './registry.js';
-import { isJsonObject, parseJsonText, type BgTaskSnapshot, type JsonObject } from './common.js';
-import { replaceFileDurable, writeFileDurable } from './durable-fs.js';
+} from './registry.ts';
+import { isJsonObject, parseJsonText, type BgTaskSnapshot, type JsonObject } from './common.ts';
+import { replaceFileDurable, writeFileDurable } from './durable-fs.ts';
 import {
   assertWindowsCommandLineWithinLimit,
   piLaunchArgv,
   resolvePiLaunch,
   type PiLaunchSpec,
-} from './pi-launch.js';
+} from './pi-launch.ts';
 
 export const PI_TASK_ATTESTATION_SCHEMA_VERSION = 'phase2.pi_task_attestation.v1';
 export const ATTESTED_TASK_ID_PATTERN = /^b[0-9a-f]{32}$/;

@@ -1,9 +1,9 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { chmod, mkdir } from 'node:fs/promises';
 import { basename, isAbsolute, join, relative, sep } from 'node:path';
-import { canonicalJson, sha256Buffer } from '../attested-pi-run.js';
-import { sanitizePathSegment } from '../common.js';
-import { replaceFileDurable } from '../durable-fs.js';
+import { canonicalJson, sha256Buffer } from '../attested-pi-run.ts';
+import { sanitizePathSegment } from '../common.ts';
+import { replaceFileDurable } from '../durable-fs.ts';
 import {
   EMPTY_FUSION_USAGE,
   FUSION_COMMITTED_RESULT_SCHEMA_VERSION,
@@ -37,12 +37,12 @@ import {
   type FusionUsage,
   type FusionWorkflowId,
   type ResolvedFusionModels,
-} from './types.js';
-import { fusionWorkflowProfile, type FusionWorkflowProfile } from './workflows.js';
+} from './types.ts';
+import { fusionWorkflowProfile, type FusionWorkflowProfile } from './workflows.ts';
 import {
   FUSION_CANDIDATE_MAX_OUTPUT_BYTES,
   fusionJsonRenderedTextBytes,
-} from './output-contract.js';
+} from './output-contract.ts';
 
 /**
  * Run ids are prefixed by workflow so an artifact directory is self-describing.
@@ -72,7 +72,7 @@ interface MutableFusionArtifactManifest {
     merge: FusionCapability;
   };
   context: {
-    kind: import('./types.js').FusionContextKind;
+    kind: import('./types.ts').FusionContextKind;
     policy_id: string;
     ledger_artifact?: string;
     source_policy_artifact?: string;

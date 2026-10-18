@@ -2,9 +2,9 @@ import { statSync, type WriteStream } from 'node:fs';
 import { open } from 'node:fs/promises';
 import { extname, isAbsolute, join, win32 } from 'node:path';
 import { DEFAULT_MAX_BYTES } from '@earendil-works/pi-coding-agent';
-import type { BackgroundTaskChildProcess } from './registry.js';
-import type { DelegateBudgetRouteSource, DelegateExtensionMode } from './delegate/types.js';
-import type { FusionResultDetails, FusionUsage, FusionWorkflowId } from './fusion/types.js';
+import type { BackgroundTaskChildProcess } from './registry.ts';
+import type { DelegateBudgetRouteSource, DelegateExtensionMode } from './delegate/types.ts';
+import type { FusionResultDetails, FusionUsage, FusionWorkflowId } from './fusion/types.ts';
 
 export const TASK_STATUS_VALUES = ['running', 'completed', 'failed', 'killed'] as const;
 export const TERMINAL_TASK_STATUS_VALUES = ['completed', 'failed', 'killed'] as const;

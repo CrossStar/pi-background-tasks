@@ -1,4 +1,4 @@
-import type { JsonObject } from '../common.js';
+import type { JsonObject } from '../common.ts';
 
 export const FUSION_CLAUDE_CACHE_OBSERVATION_SCHEMA_VERSION =
   'pi-background-tasks.fusion-claude-cache-observation.v1' as const;

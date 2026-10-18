@@ -4,13 +4,13 @@ import type {
   TokenBudgetDominantByteClass,
   TokenBudgetFamily,
   TokenBudgetRateSource,
-} from '../context/token-budget.js';
+} from '../context/token-budget.ts';
 import type {
   ContextProjectionMapEntry,
   OmittedEventRecord,
   ProjectionAccounting,
   ProjectionEntry,
-} from '../context/visible-conversation-v2.js';
+} from '../context/visible-conversation-v2.ts';
 
 export const DELEGATE_SEED_SCHEMA_VERSION = 'pi-background-tasks.delegate-seed.v2' as const;
 export const DELEGATE_LEDGER_SCHEMA_VERSION = 'pi-background-tasks.delegate-ledger.v1' as const;

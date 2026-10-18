@@ -7,7 +7,7 @@ import {
   FUSION_VALIDATE_MERGER_SYSTEM_PROMPT,
   fusionCandidateSystemPrompt,
   fusionValidateCandidateSystemPrompt,
-} from './prompts.js';
+} from './prompts.ts';
 import {
   FUSION_INSPECT_TOOLS,
   FUSION_NO_TOOLS_CAPABILITY,
@@ -18,7 +18,7 @@ import {
   type FusionContextKind,
   type FusionPublicWorkflowName,
   type FusionWorkflowId,
-} from './types.js';
+} from './types.ts';
 
 export const FUSION_REASON_TOOL_NAME = 'fusion_reason' as const;
 export const FUSION_INVESTIGATE_TOOL_NAME = 'fusion_investigate' as const;

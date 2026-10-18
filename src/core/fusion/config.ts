@@ -3,9 +3,9 @@ import { chmod, mkdir, open, readFile, rm } from 'node:fs/promises';
 import { basename, dirname, join } from 'node:path';
 import { getAgentDir } from '@earendil-works/pi-coding-agent';
 import type { Api, Model } from '@earendil-works/pi-ai';
-import { isJsonObject, parseJsonText, type JsonObject } from '../common.js';
-import { replaceFileDurable } from '../durable-fs.js';
-import { CLAUDE_CODE_200K_SUBSCRIPTION_CONTEXT_WINDOW } from '../anthropic-attribution.js';
+import { isJsonObject, parseJsonText, type JsonObject } from '../common.ts';
+import { replaceFileDurable } from '../durable-fs.ts';
+import { CLAUDE_CODE_200K_SUBSCRIPTION_CONTEXT_WINDOW } from '../anthropic-attribution.ts';
 import {
   FUSION_MODEL_CONFIG_SCHEMA_VERSION,
   FusionError,
@@ -16,7 +16,7 @@ import {
   type LoadedFusionModelConfig,
   type ResolvedFusionModel,
   type ResolvedFusionModels,
-} from './types.js';
+} from './types.ts';
 
 export const FUSION_MODEL_CONFIG_FILE = 'fusion-models.json';
 export const CURRENT_MODEL_SELECTION = '$current';

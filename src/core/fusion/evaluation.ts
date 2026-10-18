@@ -1,4 +1,4 @@
-import { parseJsonText, type JsonObject } from '../common.js';
+import { parseJsonText, type JsonObject } from '../common.ts';
 import {
   FUSION_CANDIDATE_IDS,
   FUSION_EVALUATION_SCHEMA_VERSION,
@@ -16,7 +16,7 @@ import {
   type FusionValidationFindingGroup,
   type FusionValidationFindingRecord,
   type FusionValidationSeverity,
-} from './types.js';
+} from './types.ts';
 
 const MAX_REPAIR_ERROR_CHARS = 500;
 const MAX_REPAIR_ERROR_COUNT = 24;

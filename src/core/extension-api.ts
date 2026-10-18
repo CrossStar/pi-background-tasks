@@ -6,8 +6,8 @@ import {
   type BgTaskSnapshot,
   type JsonObject,
   type StartTaskOptions,
-} from './common.js';
-import type { BackgroundTaskContext, BackgroundTaskRegistry } from './registry.js';
+} from './common.ts';
+import type { BackgroundTaskContext, BackgroundTaskRegistry } from './registry.ts';
 
 export const BG_REQUEST_CHANNEL = 'pi-background-tasks:request:v1';
 export const BG_RESPONSE_CHANNEL = 'pi-background-tasks:response:v1';

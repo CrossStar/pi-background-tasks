@@ -2,9 +2,9 @@ import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { chmod, mkdir, open, readFile, rename, rm } from 'node:fs/promises';
 import { basename, isAbsolute, join, relative, sep } from 'node:path';
-import { canonicalJson } from '../attested-pi-run.js';
-import { sanitizePathSegment } from '../common.js';
-import { replaceFileDurable, writeFileDurable } from '../durable-fs.js';
+import { canonicalJson } from '../attested-pi-run.ts';
+import { sanitizePathSegment } from '../common.ts';
+import { replaceFileDurable, writeFileDurable } from '../durable-fs.ts';
 import {
   DELEGATE_MANIFEST_SCHEMA_VERSION,
   DELEGATE_RECEIPT_SCHEMA_VERSION,
@@ -13,13 +13,13 @@ import {
   type DelegateLimits,
   type DelegatePinnedRoute,
   type DelegateSpillReceipt,
-} from './types.js';
+} from './types.ts';
 import {
   DELEGATE_RESULT_PACKAGE_FILENAME,
   serializeDelegateResultPackage,
-} from './result-package.js';
-import type { DelegateResultPackageV1 } from './types.js';
-import type { DelegateAdmissionPlanV1 } from './budget.js';
+} from './result-package.ts';
+import type { DelegateResultPackageV1 } from './types.ts';
+import type { DelegateAdmissionPlanV1 } from './budget.ts';
 
 /**
  * Durable delegate artifacts.

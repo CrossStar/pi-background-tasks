@@ -1,1 +1,1 @@
-export { default } from '../src/delegate-child-extension.js';
+export { default } from '../src/delegate-child-extension.ts';

@@ -1,7 +1,7 @@
 import { lstat, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { canonicalJson, sha256Buffer } from '../attested-pi-run.js';
-import { parseJsonText, type JsonObject } from '../common.js';
+import { canonicalJson, sha256Buffer } from '../attested-pi-run.ts';
+import { parseJsonText, type JsonObject } from '../common.ts';
 import {
   FUSION_FAILURE_SUMMARY_ATTEMPT_CAP,
   FUSION_FAILURE_SUMMARY_EVIDENCE_CAP,
@@ -9,7 +9,7 @@ import {
   FUSION_FAILURE_SUMMARY_MAX_BYTES,
   assertFusionArtifactBasename,
   buildFusionRunProgress,
-} from './artifacts.js';
+} from './artifacts.ts';
 import {
   FUSION_COMMITTED_RESULT_SCHEMA_VERSION,
   FUSION_FAILURE_SUMMARY_SCHEMA_VERSION,
@@ -30,7 +30,7 @@ import {
   type FusionRunProgress,
   type FusionSource,
   type FusionStage,
-} from './types.js';
+} from './types.ts';
 
 const SHA256_PATTERN = /^sha256:[0-9a-f]{64}$/u;
 

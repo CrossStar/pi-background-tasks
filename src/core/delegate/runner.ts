@@ -1,10 +1,10 @@
 import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
-import { canonicalJson } from '../attested-pi-run.js';
-import { replaceFileDurable } from '../durable-fs.js';
-import { resolveAnthropicAttributionExtensionPath } from '../anthropic-attribution-path.js';
+import { canonicalJson } from '../attested-pi-run.ts';
+import { replaceFileDurable } from '../durable-fs.ts';
+import { resolveAnthropicAttributionExtensionPath } from '../anthropic-attribution-path.ts';
 import { join } from 'node:path';
-import { DelegateArtifactStore, discardDelegateArtifactRoot } from './artifacts.js';
+import { DelegateArtifactStore, discardDelegateArtifactRoot } from './artifacts.ts';
 import {
   buildDelegateChildArgv,
   delegateChildEnv,
@@ -13,18 +13,18 @@ import {
   resolveDelegateChildExtensionPath,
   type DelegatePreflightInput,
   type DelegatePreflightResult,
-} from './launch.js';
+} from './launch.ts';
 import {
   DELEGATE_INLINE_ANSWER_BYTES,
-} from './budget.js';
-import { verifyDelegateResultPackage, type VerifiedDelegateResult } from './result-package.js';
+} from './budget.ts';
+import { verifyDelegateResultPackage, type VerifiedDelegateResult } from './result-package.ts';
 import {
   DelegateError,
   type DelegateAutoDeliverMode,
   type DelegateExtensionMode,
   type DelegateResultPackageV1,
-} from './types.js';
-import type { DelegateTaskFacts, DelegateTaskOutcome } from '../common.js';
+} from './types.ts';
+import type { DelegateTaskFacts, DelegateTaskOutcome } from '../common.ts';
 
 /**
  * Delegate launch preparation and terminal evaluation.

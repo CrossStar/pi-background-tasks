@@ -998,7 +998,7 @@ export class BackgroundTasksManager implements Component {
         ` ${task.command}`,
       );
     }
-    if (task.isAgent || task.delegate !== undefined || task.fusion !== undefined) {
+    if (task.isAgent) {
       if (task.model) body.push(` Model: ${formatModelDetail(task)}`);
       if (task.contextUsage?.contextWindow) body.push(` Context: ${formatContextDetail(task)}`);
       if (task.tokenUsage && task.tokenUsage.totalTokens > 0) body.push(` Tokens: ${formatTokenDetail(task)}`);

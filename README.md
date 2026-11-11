@@ -8,7 +8,6 @@
 
 我的日常使用场景是运行测试、构建、Python 脚本和开发服务。普通任务只需要关注命令、状态和输出，因此默认界面不显示 model、ctx、token 等模型信息。
 
-这个仓库基于 [ismailsaleekh/pi-background-tasks](https://github.com/ismailsaleekh/pi-background-tasks) 继续开发，保留了 Delegate、Fusion 等进阶能力。本仓库的 Git 版本与上游 npm 包分别发布，安装时请使用下面的仓库地址。
 
 ## 安装
 
@@ -113,7 +112,6 @@ pi install .
 
 任务由同一个 Pi 进程中的共享 registry 托管。`/reload` 时旧扩展解除界面和通知绑定，新扩展取得同一个 registry 并重新绑定，因此子进程、任务 ID、日志流和停止能力都能延续。交接间隙完成的任务会在重新绑定后补发通知。
 
-这支持的是**同一进程内的扩展热重载**。Pi 退出、崩溃或重启后，不会自动接管旧进程；正常退出以及新建、切换或派生会话会清理运行中任务。尚未注册为托管任务的 Fusion 预检会在 reload 时取消。
 
 ## 进阶能力
 
@@ -121,17 +119,9 @@ pi install .
 
 | 功能 | 用途 |
 | --- | --- |
-| `bg_delegate` | 启动一个固定模型路由的只读子 Pi，携带当前对话的筛选上下文进行调查 |
-| `bg_result` | 校验并读取 Delegate / Fusion 的结果；运行中返回未就绪状态 |
 | `bg_run_pi_attested` | 执行一个结构化子 Pi 任务，生成本地报告和校验记录 |
-| `fusion_reason` | 多模型推理与综合，无工具调用 |
-| `fusion_investigate` | 只读调查仓库 |
-| `fusion_research` | 根据明确提供的公开 URL 获取资料并综合，不是网页搜索 |
-| `fusion_validate` | 对已完成的改动进行只读辅助审查，不代替测试 |
 
-`/fusion` 是推理流程的交互入口，`/fusion-models` 用于选择模型。Fusion 通常由三个候选、一个盲评和一个综合步骤组成，评估修复可能增加一次调用。Delegate / Fusion 不会静默替换指定模型；结果读取包含完整性校验。
 
-Agent、Delegate 和 Fusion 任务只在详情中显示实际报告的模型遥测。普通 shell 任务不显示这些信息，命令自身打印的 stdout/stderr 始终保留。
 
 包还包含 Anthropic 订阅归属与缓存处理扩展，安装时会全局加载；相关行为见 [Anthropic 子系统说明](docs/subsystems/anthropic-attribution.md)。
 
@@ -140,7 +130,6 @@ Agent、Delegate 和 Fusion 任务只在详情中显示实际报告的模型遥�
 - Windows 默认使用 `cmd.exe`；POSIX 使用配置的 shell。命令语法应与实际平台一致，Windows 不会自动把 Bash 写法转换为 cmd。
 - Windows 可通过 `PI_BG_SHELL=bash` 和 `PI_BG_SHELL_PATH` 显式选择 Bash；具体配置见 [配置文档](docs/operations/configuration.md)。
 - 后台命令以当前用户权限执行，并非沙箱；程序调用网络或服务的行为由该命令决定。
-- 日志和 metadata 位于项目的 `.pi/tasks/<session-id>-<pid>/`，Delegate / Fusion 另有自己的产物目录。
 - 普通日志输出与终态 metadata 的持久化保证不同；完整约定见 [后台任务运行时](docs/subsystems/background-task-runtime.md)。
 - 本地 attestation 是同用户可写的记录，不是对机器或提供方可信性的密码学证明。
 
@@ -166,7 +155,7 @@ npm run test:pty
 npm run test:pnpm-pack
 ```
 
-PTY 测试是否实际执行取决于宿主的交互输入能力；跳过不能视为交互验收通过。更多覆盖范围见 [TESTING.md](TESTING.md) 和 [TEST_PLAN.md](TEST_PLAN.md)。Git 发版说明见 [PUBLISHING.md](PUBLISHING.md)。
+PTY 测试是否实际执行取决于宿主的交互输入能力；跳过不能视为交互验收通过。更多覆盖范围见 [docs/TESTING.md](docs/TESTING.md) 和 [docs/TEST_PLAN.md](docs/TEST_PLAN.md)。Git 发版说明见 [docs/PUBLISHING.md](docs/PUBLISHING.md)。
 
 ## 文档导航
 
@@ -194,20 +183,20 @@ PTY 测试是否实际执行取决于宿主的交互输入能力；跳过不能�
 <!-- pi-docs:begin name="readme-public-surfaces" generator="scripts/docs/generate.mjs" -->
 | 接口类型 | 数量 |
 | --- | --- |
-| 命令 | 11 |
-| 工具 | 11 |
+| 命令 | 9 |
+| 工具 | 5 |
 | 快捷键 | 2 |
-| 消息渲染器 | 2 |
+| 消息渲染器 | 1 |
 | 事件接口 | 1 |
-| 工作流 | 4 |
+| 工作流 | 0 |
 
-公开命令：`/bg`, `/bg-clear`, `/bg-tasks`, `/bg-update`, `/claude-cache`, `/fusion`, `/fusion-models`, `/jobs`, `/kill`, `/logs`, `/tasks`。
+公开命令：`/bg`, `/bg-clear`, `/bg-tasks`, `/bg-update`, `/claude-cache`, `/jobs`, `/kill`, `/logs`, `/tasks`。
 
-公开工具：`bg_delegate`, `bg_kill`, `bg_logs`, `bg_result`, `bg_run`, `bg_run_pi_attested`, `bg_status`, `fusion_investigate`, `fusion_reason`, `fusion_research`, `fusion_validate`。
+公开工具：`bg_kill`, `bg_logs`, `bg_run`, `bg_run_pi_attested`, `bg_status`。
 
 完整接口与源码归属见 [docs/INDEX.md](docs/INDEX.md)。
 <!-- pi-docs:end name="readme-public-surfaces" -->
 
 ## 来源与许可
 
-本仓库基于上游项目继续维护，新增了 reload 任务交接、日志监控台、命令查看和进度条显示等改进。保留原项目的 ISC 许可与第三方声明，详见 [LICENSE](LICENSE) 和 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
+本仓库基于上游项目继续维护，新增了 reload 任务交接、日志监控台、命令查看和进度条显示等改进。保留原项目的 ISC 许可与第三方声明，详见 [LICENSE](LICENSE) 和 [docs/THIRD_PARTY_NOTICES.md](docs/THIRD_PARTY_NOTICES.md)。

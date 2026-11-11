@@ -18,15 +18,12 @@ The runtime owns task identity, shell invocation, process lifecycle, bounded log
 - Runtime directory: `.pi/tasks/<session-id>-<pid>/` under the project cwd.
 - Per task: `<task-id>.output` and `<task-id>.json`; some agent modes may add wrapper or attestation files.
 - A process-global supervisor retains the live registry across Pi extension reload. The replacement extension runtime acquires the same registry by resolved cwd, session id, and Pi pid, then rebinds UI, notification, and EventBus delivery.
-- If no live handoff exists, session start restores validated terminal ordinary shell-task metadata from the current runtime directory. It does not guess at or reattach metadata marked `running`, and typed Delegate/Fusion result recovery remains owned by their live process handoff and artifact-verification paths.
 - In-memory recent retention prunes oldest finished tasks over the limit while preserving running tasks and terminal tasks with pending publication or notification.
 - `resolveTask` accepts exact ids or unambiguous prefixes and fails loudly for empty, unknown, or ambiguous ids.
 
 ## Starting managed tasks
 
-`startManagedTask` tracks a package-owned in-process asynchronous workflow through the same metadata, output, dock, status, logs, kill, EventBus terminal, and notification surfaces as process tasks. Fusion uses this path only after its no-child-yet durable preflight barrier. Managed cancellation invokes a task-owned callback; terminal state is not published until the workflow promise has settled and completed its own child cleanup/audit sealing.
 
-Managed task ids are explicit and path-safe. Fusion uses its run id as the single task/run identity. Progress is written as bounded task output and persisted in Fusion task facts. `claimFusionUsage` serializes a once-only durable accounting claim so repeated `bg_result` calls cannot duplicate usage.
 
 ## Starting ordinary tasks
 

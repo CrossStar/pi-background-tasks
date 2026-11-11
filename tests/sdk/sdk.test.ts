@@ -528,8 +528,14 @@ void describe('sdk', () => {
   void it('registers commands, tools, shortcuts, renderers, and runs with output and metadata files', async () => {
     const { session, cwd } = await harness();
     try {
-      for (const tool of ['bg_run', 'bg_status', 'bg_logs', 'bg_kill'])
-        assert.ok(session.getActiveToolNames().includes(tool), tool);
+      const retainedTools = ['bg_run', 'bg_run_pi_attested', 'bg_status', 'bg_logs', 'bg_kill'];
+      assert.deepEqual(
+        session.getActiveToolNames().filter((name) => name.startsWith('bg_') || name.startsWith('fusion_')).sort(),
+        retainedTools.sort(),
+      );
+      for (const removed of ['bg_delegate', 'bg_result', 'fusion_reason', 'fusion_investigate', 'fusion_research', 'fusion_validate']) {
+        assert.equal(session.getToolDefinition(removed), undefined, removed);
+      }
       const bgRunTool = session.getToolDefinition('bg_run');
       assert.ok(bgRunTool, 'bg_run tool should be registered');
       const bgRunParams: unknown = bgRunTool.parameters;
@@ -543,17 +549,11 @@ void describe('sdk', () => {
       const isAgentSchema = isJsonObject(properties) ? properties['isAgent'] : bgRunParams;
       assert.match(JSON.stringify(isAgentSchema), /LLM\/agent/);
       const cmds = session.extensionRunner.getRegisteredCommands().map((c) => c.invocationName);
-      for (const cmd of [
-        'bg',
-        'jobs',
-        'logs',
-        'kill',
-        'tasks',
-        'bg-tasks',
-        'bg-clear',
-        'bg-update',
-      ])
-        assert.ok(cmds.includes(cmd), cmd);
+      assert.deepEqual([...cmds].sort(), [
+        'bg', 'jobs', 'logs', 'kill', 'tasks', 'bg-tasks', 'bg-clear', 'bg-update',
+      ].sort());
+      assert.equal(cmds.includes('fusion'), false);
+      assert.equal(cmds.includes('fusion-models'), false);
       assert.ok(session.extensionRunner.getMessageRenderer('background-task-notification'));
       const shortcuts = session.extensionRunner.getShortcuts({});
       assert.ok(shortcuts.has('shift+down'));
@@ -567,7 +567,7 @@ void describe('sdk', () => {
         triggerOnCompletion: false,
       });
       const t = await wait(session, taskFromResult(r).id);
-      assert.equal(t.status, 'completed');
+      assert.equal(t.status, 'completed', await readFile(join(cwd, t.outputPath), 'utf8'));
       assert.equal(t.name, 'SDK Echo');
       assert.equal(t.isAgent, false);
       assert.ok(existsSync(join(cwd, t.outputPath)));
@@ -1219,7 +1219,7 @@ console.log(JSON.stringify({ type: "message_end", message: secondMessage }));
         triggerOnCompletion: false,
       });
       const t = await wait(session, taskFromResult(r).id);
-      assert.equal(t.status, 'completed');
+      assert.equal(t.status, 'completed', await readFile(join(cwd, t.outputPath), 'utf8'));
       assert.deepEqual(t.contextUsage, {
         tokens: 360,
         contextWindow: 272000,
@@ -1303,7 +1303,7 @@ console.log(JSON.stringify({ type: "message_end", message: secondMessage }));
           triggerOnCompletion: false,
         });
         const t = await wait(session, taskFromResult(r).id, 240);
-        assert.equal(t.status, 'completed');
+        assert.equal(t.status, 'completed', await readFile(join(cwd, t.outputPath), 'utf8'));
         assert.deepEqual(t.tokenUsage, {
           input: 20,
           output: 10,

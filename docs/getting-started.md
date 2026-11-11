@@ -73,51 +73,6 @@ When Pi itself should start a long command, use the `bg_run` tool with the stric
 
 Set `isAgent:true` only when the shell command launches a child Pi/LLM agent, such as `pi -p ...` or `pi --mode json ...`.
 
-## 5. Delegate read-only investigation
-
-Use `bg_delegate` when the worker needs the current conversation as background but should not block the parent:
-
-```json
-{
-  "name": "Config audit",
-  "prompt": "Inspect package configuration and report where background-task output limits are defined. Include file paths and concise evidence.",
-  "capability": "inspect",
-  "extensionMode": "isolated",
-  "autoDeliver": "never"
-}
-```
-
-The child receives a frozen visible-conversation projection, its own session id/session directory, and read/search/list tools only. It has no shell, no write/edit tools, no network, no recursive delegate, and no Fusion.
-
-After the completion notification, retrieve the committed answer:
-
-`extensionMode:"isolated"` is the default and disables ambient extension discovery. If the pinned provider is registered only by a user/project extension, use `extensionMode:"ambient"` explicitly. Ambient mode executes arbitrary discovered extension code; the inspect tool allowlist does not sandbox it, so process isolation is weakened. No caller-supplied extension path or route fallback is supported.
-
-```json
-{
-  "taskId": "<task id from bg_delegate>",
-  "delivery": "inline"
-}
-```
-
-`bg_result` is point-in-time: a running task returns a typed not-ready state and never blocks. A committed answer is hash-verified before bytes are returned and is never silently truncated.
-
-## 6. Run first Fusion reasoning
-
-For self-contained synthesis:
-
-```json
-{"prompt":"Compare a foreground command, bg_run, and bg_delegate for a ten-minute repository audit."}
-```
-
-Call this with `fusion_reason`, or use:
-
-```text
-/fusion Compare a foreground command, bg_run, and bg_delegate for a ten-minute repository audit.
-```
-
-Fusion returns a tracked background-task receipt after durable no-child preflight. It then runs three candidates, blind evaluation, optional bounded repair only if evaluator JSON is invalid, and merger. Wait for the terminal notification and call `bg_result` once; do not poll. `/fusion` and `fusion_reason` receive a versioned conversation projection; investigate/research/validate receive clean task input only.
-
 ## Next links
 
 - [Choose a workflow](choose-a-workflow.md)

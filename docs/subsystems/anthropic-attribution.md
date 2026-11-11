@@ -28,7 +28,7 @@ The extension reads `userID` and `oauthAccount.accountUuid` from `~/.claude.json
 
 ## Sanitization
 
-The package has no runtime dependency on `@ravshansbox/pi-anthropic-sps`. Its three reviewed exact-match prompt-line rules are implemented locally in `src/core/anthropic-attribution.ts`, with the upstream MIT notice retained in `THIRD_PARTY_NOTICES.md`.
+The package has no runtime dependency on `@ravshansbox/pi-anthropic-sps`. Its three reviewed exact-match prompt-line rules are implemented locally in `src/core/anthropic-attribution.ts`, with the upstream MIT notice retained in `docs/THIRD_PARTY_NOTICES.md`.
 
 Only complete matching lines are removed. Other system text, non-text blocks, custom block fields, and valid cache controls are preserved. The rules cover both Pi documentation-list variants—with and without `environment-variables.md`—plus the cross-reference instruction line.
 
@@ -42,8 +42,6 @@ Ownership is published only after all hooks and the command register. Extension 
 
 Ambient discovery is insufficient for child paths that use `--no-extensions`. `resolveAnthropicAttributionExtensionPath()` is the single package path seam used by:
 
-- Fusion Anthropic children, before the Fusion runtime governor;
-- Anthropic delegate children, before the delegate guard;
 - Anthropic attested Pi children.
 
 Non-Anthropic child argv does not resolve or add this extension. Missing package extension bytes fail before child creation; no route substitution or sanitizer fallback is attempted.
@@ -58,6 +56,4 @@ Arbitrary shell commands started through `bg_run` are not rewritten. An Anthropi
 
 - [`/claude-cache`](../commands/claude-cache.md)
 - [Configuration](../operations/configuration.md)
-- [Fusion subsystem](fusion.md)
-- [Delegation subsystem](delegation.md)
 - [Attested Pi runs](attested-pi-runs.md)

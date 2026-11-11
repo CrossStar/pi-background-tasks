@@ -26,7 +26,6 @@ Resolution failures throw `PiLaunchResolutionError` with code `pi_executable_res
 
 `assertWindowsCommandLineWithinLimit()` renders the exact Windows command line with Windows quoting rules, measures UTF-16 length plus the terminating NUL, and throws `PiCommandLineLimitError` (`pi_command_line_too_long`) if it exceeds 32,767 characters. The check is used before child launches that construct `pi` argv.
 
-Delegate seed bytes are delivered over stdin, not argv, so large seeds do not rely on command-line quoting or shell length limits.
 
 ## Durable write invariant
 
@@ -46,8 +45,6 @@ After atomic replace, POSIX-like platforms open and sync the parent directory to
 ## Process trust boundaries
 
 - Background shell tasks run the operator-provided shell command in the project cwd and are not sandboxed.
-- Delegate children are direct `pi` spawns, not shell commands. They use a task-owned session id and session dir, stripped parent session environment, disabled discovery, and an explicit child guard extension; Anthropic delegates first load the package attribution extension.
-- Fusion children are direct `pi --mode text` spawns with private metadata/tool-call audit extensions and workflow-specific tool policy; Anthropic children first load the package attribution extension.
 - Attested Pi tasks are direct `pi --mode json` spawns and produce evidence sidecars after successful parsing and durability; Anthropic tasks receive the package attribution extension explicitly.
 
 Never blur parent and child authority: parent tools can start/inspect/kill tasks, but child tools must stay within their explicit argv tool set.

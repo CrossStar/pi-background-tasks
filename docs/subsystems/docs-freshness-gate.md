@@ -13,13 +13,13 @@ This authored section defines the boundary: documentation facts are extracted fr
 
 <!-- pi-docs:begin name="docs-freshness-gate" generator="scripts/docs/generate.mjs" -->
 - Canonical package version: `2.7.1`
-- Governed markdown docs: 42
-- Public surfaces extracted: 31
-- Governed production sources: 51
-- Tool contracts extracted: 11
-- Schema IDs extracted: 47
-- Environment variable references extracted: 49
-- Behavioral attestation receipts not passing: 8
+- Governed markdown docs: 36
+- Public surfaces extracted: 18
+- Governed production sources: 15
+- Tool contracts extracted: 5
+- Schema IDs extracted: 5
+- Environment variable references extracted: 25
+- Behavioral attestation receipts not passing: 5
 - Receipt store: `docs/attestations.json`
 
 `npm run docs:verify` is read-only: it renders generated files twice in memory and compares them with committed bytes. `npm run docs:generate` is the only docs writer.

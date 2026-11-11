@@ -9,7 +9,7 @@ covers_sources: []
 ---
 # Testing operations
 
-Package entry docs: `TESTING.md` and `TEST_PLAN.md`. This page explains how to choose gates without losing the detailed coverage matrix.
+Package entry docs: `docs/TESTING.md` and `docs/TEST_PLAN.md`. This page explains how to choose gates without losing the detailed coverage matrix.
 
 ## Isolation defaults
 
@@ -32,19 +32,17 @@ From current `package.json`:
 |---|---|---|
 | Typecheck | `npm run typecheck` | `tsc --noEmit`. |
 | Type safety package tests | `npm run test:type-safety` | Package/type-safety tests. |
-| Unit | `npm run test:unit` | Pure/unit coverage, including durable fs, budgets, projection, Fusion/delegate core. |
+| Unit | `npm run test:unit` | Pure/unit coverage, including durable filesystem operations and background task lifecycle. |
 | SDK | `npm run test:sdk` | Real package entrypoint through SDK-style harnesses. |
 | RPC | `npm run test:rpc` | RPC command/tool surface. |
 | Component | `npm run test:component` | TUI component rendering/key behavior. |
 | Package | `npm run test:package` | Manifest/payload/mutation/package guards. |
-| Hook contract | `npm run test:hook-contract` | Real Pi hook characterization evidence comparison. |
-| Default | `npm run test` | Typecheck + type-safety + unit + SDK + RPC + component + package + hook-contract. |
+| Default | `npm run test` | Typecheck + type-safety + unit + SDK + RPC + component + package. |
 | PTY | `npm run test:pty` | Real expect/TUI scenarios; full gate only. |
 | Agent loop | `npm run test:agent-loop` | Scripted-provider real agent-loop behavior; full gate only. |
 | Full | `npm run test:full` | Default + PTY + agent-loop. |
 | Smoke | `npm run smoke` | Isolated load-only `/jobs`. |
-| Large context smoke | `npm run smoke:large-context` | Offline Fusion context/budget reproduction; no inference/child spawn. |
-| Compatibility | `npm run test:compat` | Exact Pi version install/compat plus current-host witness, required for release and run in Linux Node 22.19.0 CI. Full POSIX PATH fixtures require Linux/macOS; use WSL on Windows. Unsupported Windows execution fails explicitly instead of skipping assertions. |
+| Compatibility | `npm run test:compat` | Exact Pi version installation, TypeBox peer identity, attribution, `/jobs` load, and real `/bg` completion, required for release and run in Linux Node 22.19.0 CI. Full POSIX PATH fixtures require Linux/macOS; use WSL on Windows. Unsupported Windows execution fails explicitly instead of skipping assertions. |
 | Pack | `npm run pack:dry-run` | Release payload preview. |
 | Docs generate | `npm run docs:generate` | Regenerates generated docs regions/index/manifest. |
 | Docs verify | `npm run docs:verify` | Offline, read-only deterministic docs freshness verification; renders generated files twice in memory and reports semantic receipt freshness without requiring it. |
@@ -58,13 +56,10 @@ Do not run full/default/root suites for documentation-only edits unless the oper
 
 ## Evidence that must be preserved
 
-`TESTING.md` and `TEST_PLAN.md` intentionally carry exhaustive QA knowledge. Do not replace them with generic summaries.
+`docs/TESTING.md` and `docs/TEST_PLAN.md` intentionally carry exhaustive QA knowledge. Do not replace them with generic summaries.
 
 Preserve especially:
 
-- Pi hook contract evidence and byte-identical shipped copy behavior;
-- Fusion golden-byte and independent oracle coverage;
-- delegate seed/budget/artifact/result/guard/mutation coverage;
 - scripted-provider no-poll/no-sleep follow-up behavior;
 - PTY keyboard-protocol negotiation notes;
 - compatibility TypeBox peer/payload checks;
@@ -77,7 +72,7 @@ When a change is constrained to focused docs checks, use targeted checks such as
 ```bash
 python3 - <<'PY'
 from pathlib import Path
-for p in [*Path('docs').rglob('*.md'), Path('TESTING.md'), Path('TEST_PLAN.md'), Path('PUBLISHING.md')]:
+for p in [*Path('docs').rglob('*.md'), Path('docs/TESTING.md'), Path('docs/TEST_PLAN.md'), Path('docs/PUBLISHING.md')]:
     if p.exists(): print(p)
 PY
 ```
@@ -96,7 +91,5 @@ These checks are not substitutes for code gates when source behavior changes.
 
 - **Doc-only navigation/release wording:** focused link/frontmatter/version checks.
 - **EventBus docs vs API changes:** EventBus unit/SDK targeted tests if code changed; otherwise focused docs checks.
-- **Context projection/budget changes:** unit tests for projection/budget/golden/oracle; do not update goldens casually.
 - **Durability/launch changes:** durable-fs, pi-launch, Windows argv targeted units.
-- **Delegate guard changes:** hook contract, delegate unit/SDK/scripted-provider targeted gates.
 - **Release candidate:** ordinary release checks in `docs/operations/releasing.md`; live subscription evidence only when explicitly certifying release behavior.

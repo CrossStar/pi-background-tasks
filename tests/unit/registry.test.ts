@@ -1556,7 +1556,7 @@ void describe('BackgroundTaskRegistry', () => {
     }
   });
 
-  void it('tracks managed Fusion completion, durable progress, once-only usage, and cancellation', async () => {
+  void it('tracks managed task completion, durable progress, and cancellation', async () => {
     const h = await createHarness({ stopWaitMs: 100 });
     try {
       let complete: (() => void) | undefined;
@@ -1567,63 +1567,43 @@ void describe('BackgroundTaskRegistry', () => {
       const terminalPublicationGate = new Promise<void>((resolve) => {
         releaseTerminal = resolve;
       });
-      const facts = {
-        runId: 'reason-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
-        workflow: 'reason' as const,
-        artifactDir: '.pi/fusion/test/reason-a',
-        artifactDirAbs: join(h.cwd, '.pi', 'fusion', 'test', 'reason-a'),
-        state: 'initializing',
-        usageDelivered: false,
-      };
       const task = await h.registry.startManagedTask(h.ctx, {
-        id: facts.runId,
-        name: 'fusion reason',
-        command: 'fusion_reason',
+        id: 'managed-completion',
+        name: 'managed work',
+        command: 'managed-work',
         isAgent: true,
         completion,
         cancel: () => undefined,
         notifyOnCompletion: true,
         triggerOnCompletion: true,
-        fusion: facts,
         terminalPublicationGate,
       });
       assert.equal(h.children.length, 0, 'managed task must not create a registry child process');
       await h.registry.updateManagedTask(task, 'candidates_running', 'candidate wave started');
-      assert.equal(task.fusion?.state, 'candidates_running');
       assert.match(await readFile(task.outputAbsPath, 'utf8'), /candidate wave started/);
-      assert.equal(await h.registry.claimFusionUsage(task), true);
-      assert.equal(await h.registry.claimFusionUsage(task), false);
-      assert.equal(task.fusion?.usageDelivered, true);
       complete?.();
-      await waitFor(() => task.status === 'completed', 'managed Fusion completion');
+      await waitFor(() => task.status === 'completed', 'managed task completion');
       assert.equal(
         h.notifications.length,
         0,
         'completion must wait behind the launch publication gate',
       );
       releaseTerminal?.();
-      await waitFor(() => h.notifications.length === 1, 'gated managed Fusion notification');
-      assert.match(h.notifications[0]?.message.content ?? '', /Call bg_result/);
+      await waitFor(() => h.notifications.length === 1, 'gated managed task notification');
 
       let rejectCancelled: ((error: Error) => void) | undefined;
       const cancelled = new Promise<void>((_resolve, reject) => {
         rejectCancelled = reject;
       });
-      const cancelledFacts = {
-        ...facts,
-        runId: 'reason-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
-        usageDelivered: false,
-      };
       const cancelledTask = await h.registry.startManagedTask(h.ctx, {
-        id: cancelledFacts.runId,
-        name: 'fusion reason',
-        command: 'fusion_reason',
+        id: 'managed-cancellation',
+        name: 'managed work',
+        command: 'managed-work',
         isAgent: true,
         completion: cancelled,
-        cancel: () => rejectCancelled?.(new Error('fusion cancelled')),
+        cancel: () => rejectCancelled?.(new Error('managed cancelled')),
         notifyOnCompletion: false,
         triggerOnCompletion: false,
-        fusion: cancelledFacts,
         stopWaitMs: 100,
       });
       await h.registry.stopTask(cancelledTask, 'user');

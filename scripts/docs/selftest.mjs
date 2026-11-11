@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import {
@@ -35,28 +35,21 @@ function mustThrow(name, fn, pattern) {
 
 const codeFacts = buildCodeFacts();
 const docsModel = loadDocsModel();
+const docsRoot = new URL('../../docs/', import.meta.url);
+const markdownFiles = readdirSync(docsRoot, { recursive: true }).filter((file) => file.endsWith('.md'));
+assert.equal(docsModel.docs.length, markdownFiles.length, 'every docs Markdown file is governed');
+assert.equal(codeFacts.public_surface_ids.length, 18, 'retained public surfaces are extracted');
 
-assert.equal(docsModel.docs.length, 42, 'all docs/**/*.md are governed');
-assert.equal(codeFacts.public_surface_ids.length, 31, 'all command/tool/shortcut/renderer/EventBus/workflow surfaces are extracted');
 assert.ok(codeFacts.public_surface_ids.includes('eventbus:background-task-v1'));
-assert.ok(codeFacts.public_surface_ids.includes('workflow:research'));
+assert.ok(codeFacts.public_surface_ids.includes('tool:bg_run_pi_attested'));
+assert.ok(!codeFacts.public_surface_ids.some((id) => /fusion|delegate|bg_result/.test(id)));
 assert.equal(docsModel.docs.find((doc) => doc.doc_id === 'INDEX').frontmatter.covers_surfaces.length, 0, 'INDEX must not own public surfaces');
 assert.equal(docsModel.docs.find((doc) => doc.doc_id === 'read-before-edit').frontmatter.covers_sources.length, 0, 'read-before-edit must not own sources');
 const envNames = new Set(codeFacts.environment_variables.map((entry) => entry.name));
 for (const expectedEnv of ['PI_BG_SHELL', 'PI_BG_SHELL_PATH', 'PI_BG_DISABLE_PI_TELEMETRY', 'ComSpec', 'SystemRoot', 'WINDIR']) assert.ok(envNames.has(expectedEnv), `missing env extraction for ${expectedEnv}`);
-assert.ok(!envNames.has('FUSION_CHILD_IDLE_TIMEOUT_MS'), 'fixed timeout constant must not be classified as env');
+assert.ok(!envNames.has('KILL_GRACE_MS'), 'fixed timeout constant must not be classified as env');
 const runtimeArtifacts = new Set(codeFacts.runtime_paths_and_artifacts.map((entry) => entry.value));
-for (const expectedArtifact of [
-  '<attempt-prefix> = candidate-<slot>.attempt-<n> | evaluation.attempt-<n> | merge.attempt-<n>',
-  'candidate-<slot>.attempt-<n>.response.md | candidate-<slot>.attempt-<n>.response.partial.md',
-  'evaluation.attempt-<n>.response.txt | evaluation.attempt-<n>.response.partial.txt',
-  'merge.attempt-<n>.response.md | merge.attempt-<n>.response.partial.md',
-  'candidate-<slot>.attempt-<n>.tool-calls.jsonl.seal.json',
-]) assert.ok(runtimeArtifacts.has(expectedArtifact), `missing runtime artifact ${expectedArtifact}`);
-assert.ok(
-  ![...runtimeArtifacts].some((artifact) => artifact.includes('<stage>[.<slot>]')),
-  'stale generic Fusion attempt artifact pattern must not return',
-);
+for (const expectedArtifact of ['.pi/tasks/<session-id>-<pid>/<task-id>.output', '.pi/tasks/<session-id>-<pid>/<task-id>.attestation.json']) assert.ok(runtimeArtifacts.has(expectedArtifact), `missing runtime artifact ${expectedArtifact}`);
 
 mustThrow('malformed frontmatter', () => parseFrontmatter('doc_id INDEX.md', 'fixture.md'), /malformed frontmatter/);
 mustThrow('unknown frontmatter key', () => {
@@ -229,8 +222,8 @@ mustThrow(
   /imported registration function .* is invoked more than once/,
 );
 
-mustThrow('mandatory gateway missing', () => checkPayloadFiles(['package.json', 'README.md', 'TESTING.md', 'TEST_PLAN.md', 'PUBLISHING.md', 'LICENSE', 'THIRD_PARTY_NOTICES.md', 'logo.png', 'extensions/anthropic-attribution.ts', 'extensions/background-tasks.ts', 'extensions/delegate-child.ts', 'extensions/fusion-child.ts']), /packed payload missing BACKGROUND-TASKS-INSTRUCTIONS\.md/);
-mustThrow('missing packed doc', () => checkPayloadFiles(['package.json', 'README.md', 'TESTING.md', 'TEST_PLAN.md', 'PUBLISHING.md', 'LICENSE', 'THIRD_PARTY_NOTICES.md', 'BACKGROUND-TASKS-INSTRUCTIONS.md', 'logo.png', 'extensions/anthropic-attribution.ts', 'extensions/background-tasks.ts', 'extensions/delegate-child.ts', 'extensions/fusion-child.ts']), /packed payload missing/);
+mustThrow('mandatory gateway missing', () => checkPayloadFiles(['package.json', 'README.md', 'docs/TESTING.md', 'docs/TEST_PLAN.md', 'docs/PUBLISHING.md', 'LICENSE', 'docs/THIRD_PARTY_NOTICES.md', 'logo.png', 'extensions/anthropic-attribution.ts', 'extensions/background-tasks.ts']), /packed payload missing docs\/BACKGROUND-TASKS-INSTRUCTIONS\.md/);
+mustThrow('missing packed doc', () => checkPayloadFiles(['package.json', 'README.md', 'docs/TESTING.md', 'docs/TEST_PLAN.md', 'docs/PUBLISHING.md', 'LICENSE', 'docs/THIRD_PARTY_NOTICES.md', 'docs/BACKGROUND-TASKS-INSTRUCTIONS.md', 'logo.png', 'extensions/anthropic-attribution.ts', 'extensions/background-tasks.ts']), /packed payload missing/);
 
 mustThrow('release check requires explicit tag ref', () => checkReleaseVersion(process.cwd(), undefined, undefined), /requires an explicit tag ref/);
 

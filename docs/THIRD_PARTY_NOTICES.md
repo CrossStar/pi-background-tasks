@@ -1,3 +1,12 @@
+---
+doc_id: THIRD_PARTY_NOTICES
+audience: maintainer
+mode: authored
+review_policy: contract
+stability: stable
+covers_surfaces: []
+covers_sources: []
+---
 # Third-party notices
 
 ## Anthropic system-prompt sanitization rules

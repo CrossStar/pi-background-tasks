@@ -7,8 +7,7 @@ import { fileURLToPath } from 'node:url';
  *
  * Package-owned child Pi processes disable ambient extension discovery, so they
  * must explicitly load this public extension entrypoint. Keeping path resolution
- * in one module prevents Fusion, delegation, and attested runs from deriving
- * different package paths.
+ * in one module keeps attested child runs aligned with the public package path.
  */
 export function resolveAnthropicAttributionExtensionPath(
   moduleUrl = import.meta.url,

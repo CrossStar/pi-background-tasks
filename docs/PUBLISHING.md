@@ -1,3 +1,12 @@
+---
+doc_id: PUBLISHING
+audience: maintainer
+mode: authored
+review_policy: contract
+stability: stable
+covers_surfaces: []
+covers_sources: []
+---
 # Publishing pi-background-tasks
 
 Release checklist for npm publishing and standalone git publishing.
@@ -30,9 +39,7 @@ npm run test:sdk
 npm run test:rpc
 npm run test:component
 npm run test:package
-npm run test:hook-contract
 npm run smoke
-npm run smoke:large-context
 npm run docs:verify
 npm run payload:check
 # On a tag ref only: GITHUB_REF_TYPE=tag GITHUB_REF_NAME=v$VERSION npm run release:check-version
@@ -48,7 +55,7 @@ npm view pi-background-tasks name version --json
 
 ## Payload verification
 
-Use `npm pack --dry-run --json --ignore-scripts` output as the payload source of truth for payload inspection. Verify that `extensions/`, `src/`, `docs/`, `README.md`, `TESTING.md`, `TEST_PLAN.md`, `PUBLISHING.md`, `BACKGROUND-TASKS-INSTRUCTIONS.md`, root `logo.png`, and `LICENSE` match current `package.json.files`, and that tests/scripts/local `.pi` artifacts/node_modules/nested tarballs are excluded.
+Use `npm pack --dry-run --json --ignore-scripts` output as the payload source of truth for payload inspection. Verify that `extensions/`, `src/`, `docs/`, `README.md`, `docs/TESTING.md`, `docs/TEST_PLAN.md`, `docs/PUBLISHING.md`, `docs/BACKGROUND-TASKS-INSTRUCTIONS.md`, root `logo.png`, and `LICENSE` match current `package.json.files`, and that tests/scripts/local `.pi` artifacts/node_modules/nested tarballs are excluded.
 
 ## Publish to npm
 

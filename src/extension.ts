@@ -51,8 +51,6 @@ import {
   type BackgroundTaskForUi,
   type TaskManagerResult,
 } from './ui/background-tasks-manager.ts';
-import { registerFusionExtension } from './fusion-extension.ts';
-import { registerDelegateExtension } from './delegate-extension.ts';
 
 /**
  * Project-local Pi background task manager.
@@ -237,25 +235,6 @@ export default function backgroundTasksExtension(pi: ExtensionAPI): void {
     isShuttingDown: () => registry.isShuttingDown(),
   });
 
-  registerFusionExtension(pi, {
-    startManagedTask: async (ctx, options) => {
-      currentCtx = ctx;
-      return registry.startManagedTask(backgroundTaskContext(ctx), options);
-    },
-    snapshot: (task) => registry.snapshot(task),
-    updateManagedTask: (task, state, line) => registry.updateManagedTask(task, state, line),
-  });
-
-  registerDelegateExtension(pi, {
-    startDelegateTask: async (ctx, options) => {
-      currentCtx = ctx;
-      return registry.startDelegateTask(backgroundTaskContext(ctx), options);
-    },
-    snapshot: (task) => registry.snapshot(task),
-    resolveTask: (idOrPrefix) => registry.resolveTask(idOrPrefix),
-    claimFusionUsage: (task) => registry.claimFusionUsage(task),
-  });
-
   function unseenFinishedTasks(): BgTask[] {
     return registry
       .allTasks()
@@ -377,11 +356,6 @@ export default function backgroundTasksExtension(pi: ExtensionAPI): void {
               return result;
             },
             rerunTask: async (task: BackgroundTaskForUi) => {
-              if (task.fusion !== undefined || task.delegate !== undefined) {
-                throw new Error(
-                  'Only shell-command tasks can be rerun from the dock; relaunch this typed workflow through its owning tool.',
-                );
-              }
               const rerunOptions: StartTaskOptions = {
                 name: taskDisplayName(task),
                 isAgent: task.isAgent,

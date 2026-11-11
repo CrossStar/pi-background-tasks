@@ -3,8 +3,6 @@ import { open } from 'node:fs/promises';
 import { extname, isAbsolute, join, win32 } from 'node:path';
 import { DEFAULT_MAX_BYTES } from '@earendil-works/pi-coding-agent';
 import type { BackgroundTaskChildProcess } from './registry.ts';
-import type { DelegateBudgetRouteSource, DelegateExtensionMode } from './delegate/types.ts';
-import type { FusionResultDetails, FusionUsage, FusionWorkflowId } from './fusion/types.ts';
 
 export const TASK_STATUS_VALUES = ['running', 'completed', 'failed', 'killed'] as const;
 export const TERMINAL_TASK_STATUS_VALUES = ['completed', 'failed', 'killed'] as const;
@@ -62,8 +60,6 @@ export interface BgTaskSnapshot {
   model?: string | undefined;
   telemetryUnavailableReason?: string | undefined;
   attestationPath?: string | undefined;
-  delegate?: DelegateTaskFacts | undefined;
-  fusion?: FusionTaskFacts | undefined;
 }
 
 export interface AttestedPiTaskFiles {
@@ -75,50 +71,6 @@ export interface AttestedPiTaskFiles {
 
 export interface AttestedPiTaskSnapshot extends BgTaskSnapshot {
   attestedPi?: AttestedPiTaskFiles | undefined;
-}
-
-/** Delegate-specific task facts surfaced through snapshots and `bg_result`. */
-export interface DelegateTaskFacts {
-  taskId: string;
-  launchNonce: string;
-  artifactDir: string;
-  artifactDirAbs: string;
-  seedSha256: string;
-  childSessionId: string;
-  route: { provider: string; model: string; qualifiedId: string };
-  budget: DelegateBudgetRouteSource;
-  extensionMode: DelegateExtensionMode;
-  autoDeliver: 'never' | 'when_small' | 'always';
-  /** Set once the run reaches a terminal state and its result has been evaluated. */
-  outcome?: DelegateTaskOutcome | undefined;
-}
-
-export interface DelegateTaskOutcome {
-  status: 'committed' | 'failed' | 'cancelled';
-  errorCode?: string | undefined;
-  answerBytes?: number | undefined;
-  answerSha256?: string | undefined;
-  turns?: number | undefined;
-  toolCalls?: number | undefined;
-}
-
-/** Fusion-specific task facts surfaced through snapshots and `bg_result`. */
-export interface FusionTaskFacts {
-  runId: string;
-  workflow: FusionWorkflowId;
-  artifactDir: string;
-  artifactDirAbs: string;
-  state: string;
-  outcome?: FusionTaskOutcome | undefined;
-  /** Durable once-only accounting claim made by the first successful bg_result retrieval. */
-  usageDelivered: boolean;
-}
-
-export interface FusionTaskOutcome {
-  status: 'committed' | 'failed' | 'cancelled';
-  resultDetails?: FusionResultDetails | undefined;
-  usage?: FusionUsage | undefined;
-  error?: string | undefined;
 }
 
 export interface BgTask extends Omit<BgTaskSnapshot, 'name'> {
@@ -150,9 +102,7 @@ export interface BgTask extends Omit<BgTaskSnapshot, 'name'> {
   telemetryUnavailableReason?: string | undefined;
   attestationPath?: string | undefined;
   attestedPi?: AttestedPiTaskFiles | undefined;
-  delegate?: DelegateTaskFacts | undefined;
-  fusion?: FusionTaskFacts | undefined;
-  /** Cancellation hook for an in-process managed task such as Fusion. */
+  /** Cancellation hook for an in-process managed task with cooperative cancellation. */
   managedCancel?: (() => void) | undefined;
   managedCancelRequested?: boolean | undefined;
   managedStopWaitMs?: number | undefined;
@@ -252,7 +202,7 @@ export interface StartTaskOptions {
   terminalPublicationGate?: Promise<void> | undefined;
 }
 
-/** Prepared delegate launch handed to the registry after preflight has succeeded. */
+/** Prepared in-process task launch. */
 export interface StartManagedTaskOptions {
   id: string;
   name: string;
@@ -263,22 +213,9 @@ export interface StartManagedTaskOptions {
   cancel: () => void;
   notifyOnCompletion: boolean;
   triggerOnCompletion: boolean;
-  fusion: FusionTaskFacts;
   stopWaitMs?: number | undefined;
   /** Prevent terminal publication until the launch receipt handoff is observable. */
   terminalPublicationGate?: Promise<void> | undefined;
-}
-
-export interface StartDelegateTaskOptions {
-  name: string;
-  argv: readonly string[];
-  /** Prompt bytes delivered over stdin, never as a shell or positional argument. */
-  stdinBytes: Buffer;
-  env: NodeJS.ProcessEnv;
-  facts: DelegateTaskFacts;
-  notifyOnCompletion: boolean;
-  triggerOnCompletion: boolean;
-  timeoutSeconds?: number | undefined;
 }
 
 export interface StartAttestedPiTaskOptions {
@@ -775,8 +712,6 @@ export function snapshot(task: BgTask): BgTaskSnapshot {
     model: task.model,
     telemetryUnavailableReason: task.telemetryUnavailableReason,
     attestationPath: task.attestationPath,
-    delegate: task.delegate,
-    fusion: task.fusion,
   };
 }
 

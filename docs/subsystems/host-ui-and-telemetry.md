@@ -40,7 +40,6 @@ A finished badge is cleared when that task's detail view is opened, or when `/bg
 
 `/tasks`, `/bg-tasks`, and `Shift+Down` open the same overlay. Non-interactive contexts receive an error notification directing users to `/jobs`, `/logs`, `bg_status`, or `bg_logs`.
 
-The monitor lists tasks alongside a live output preview at widths of 100 columns or more, and stacks the preview below the list on narrower terminals. Selection is retained by task id across status-driven reordering. `1` selects running tasks, `2` all tasks, and `3` failed tasks. A preview alone does not mark a task seen. Selected-task metadata includes runtime, exit code, PID when available, output size, and the output file modification age; unavailable modification times are labeled explicitly. The list view supports selection, paging, stop, confirmed stop-all, history toggle, rerun, output path, and close. Rerun is shell-task-only: typed delegate and Fusion tasks fail with guidance to relaunch through their owning tool rather than executing their display command as a shell command. The detail view shows task identity, status, runtime, output path, description, task-owned model/context/tokens/tools when reported, command, error, and an output tail.
 
 On Pi hosts that dispatch normalized mouse events (fullscreen TUI), `handleMouse` scrolls only when a wheel event is inside the rendered log body. Both wide/narrow previews and detail output use the same scrolling/follow behavior as the keyboard. Hit regions are rebuilt on render and clipped to the visible body, so headers, the task list, command viewer and clipped rows do not consume wheel events. The extension does not enable terminal mouse reporting itself; older Pi versions and normal terminal scrollback modes retain keyboard controls.
 
@@ -71,11 +70,9 @@ When a newer semver is found, the footer segment is `⬆ v<latest> /bg-update`. 
 
 ## Telemetry display
 
-The UI keeps lists and log previews focused on command execution: name, status, runtime, PID, exit/error, output size and modification age. Output age uses seconds as its smallest unit (`0s` for less than one second). Ordinary shell tasks never show model/context/token/tool telemetry or unavailable-data placeholders. Details for tasks explicitly marked as agents, Delegate tasks and Fusion tasks show only telemetry actually reported by that task. The UI never copies telemetry from the parent session into a task. Raw command output is preserved, including any model text printed by the command.
 
 ## Reload and shutdown
 
-On reload, the extension clears its session-scoped UI timer, detaches stale host callbacks, and closes the old EventBus service without stopping tasks. The replacement runtime acquires the process-supervised registry, restores terminal shell history when no live task object exists, installs a fresh EventBus service, and rebinds UI/notification/terminal callbacks. Running shell, Delegate, attested Pi, managed Fusion, and other registry-owned tasks therefore remain addressable by the same id across hot reload.
 
 On quit or session replacement (`new`, `resume`, `fork`), the extension marks the registry as shutting down, clears the status interval, kills running tasks with reason `Killed during Pi session shutdown`, reports cleanup failures through the UI when possible, releases the process-supervised registry, and closes the event service.
 

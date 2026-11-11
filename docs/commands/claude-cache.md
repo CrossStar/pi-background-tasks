@@ -42,7 +42,6 @@ An explicit call-level cache posture remains authoritative. In particular, Pi co
 
 Unknown arguments fail with the accepted values. Malformed persisted entries and invalid `PI_CACHE_RETENTION` values fail loudly.
 
-The command controls the package-owned Anthropic subscription provider only. It does not enable metered API credentials, alter non-Anthropic routes, or change isolated Fusion children; set `PI_CACHE_RETENTION` for isolated child processes.
 
 ## Related docs
 

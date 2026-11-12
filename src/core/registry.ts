@@ -1,3 +1,6 @@
+import { captureRemote } from './remote-persistent.ts';
+import * as durable from '../persistent/client.ts';
+import type { BackgroundExecutionResolver } from './execution-backend.ts';
 import { spawn as nodeSpawn, type SpawnOptions } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { createWriteStream, existsSync } from 'node:fs';
@@ -96,6 +99,7 @@ interface ChildStdin {
 }
 
 export interface BackgroundTaskChildProcess {
+  dispose?: () => void | Promise<void>;
   pid?: number | undefined;
   stdin?: ChildStdin | null | undefined;
   stdout?: OutputEventSource | null | undefined;
@@ -147,12 +151,14 @@ export type CompletionNotificationSender = (
 ) => void;
 
 export interface BackgroundTaskHostBindings {
-  onChange: () => void;
+  resolveExecution?: BackgroundExecutionResolver | undefined;
+  onChange?: () => void;
   sendCompletionNotification: CompletionNotificationSender;
-  publishTerminal: (task: BgTaskSnapshot) => void;
+  publishTerminal?: (task: BgTaskSnapshot) => void;
 }
 
 export interface BackgroundTaskRegistryOptions {
+  resolveExecution?: BackgroundExecutionResolver | undefined;
   onChange?: () => void;
   sendCompletionNotification: CompletionNotificationSender;
   publishTerminal?: (task: BgTaskSnapshot) => void;
@@ -737,6 +743,13 @@ export function releaseProcessRegistry(
 }
 
 export class BackgroundTaskRegistry {
+  private readonly taskClients = new WeakMap<BgTask, Pick<ReturnType<typeof durable.createClient>, 'get' | 'cancel'>>();
+  private readonly durableClient: ReturnType<typeof durable.createClient>;
+  private readonly durableEnabled: boolean;
+  private readonly restoredDurable = new WeakSet<BgTask>();
+  private readonly durableTasks = new WeakSet<BgTask>();
+  private durablePollGeneration = 0;
+  private durablePoll: ReturnType<typeof setTimeout> | undefined;
   private readonly tasks = new Map<string, BgTask>();
   private readonly deliveryReady = new WeakSet<BgTask>();
   private runtimeDir: RuntimeDir | undefined;
@@ -760,7 +773,13 @@ export class BackgroundTaskRegistry {
   private publishTerminalSnapshot: (task: BgTaskSnapshot) => void;
   private readonly windowsKillStates = new WeakMap<BgTask, WindowsKillState>();
 
+  private resolveExecution: BackgroundExecutionResolver | undefined;
+
   constructor(options: BackgroundTaskRegistryOptions) {
+    this.durableClient = durable.createClient(options.env?.['PI_BG_SERVICE_DIR'] === undefined
+      ? {} : { root: options.env['PI_BG_SERVICE_DIR'] });
+    this.durableEnabled = options.spawn === undefined;
+    this.resolveExecution = options.resolveExecution;
     this.spawn =
       options.spawn ?? ((command, args, spawnOptions) => nodeSpawn(command, args, spawnOptions));
     this.killProcess = options.killProcess ?? process.kill.bind(process);
@@ -791,18 +810,31 @@ export class BackgroundTaskRegistry {
 
   setShuttingDown(value: boolean): void {
     this.shuttingDown = value;
+    if (value) {
+      for (const task of this.tasks.values()) {
+        if (this.durableTasks.has(task)) this.restoredDurable.add(task);
+      }
+    }
+    if (value) this.durablePollGeneration++;
+    if (value && this.durablePoll) clearTimeout(this.durablePoll);
+    if (value) this.durablePoll = undefined;
   }
 
   detachHost(): void {
     this.hostBound = false;
+    this.durablePollGeneration++;
+    if (this.durablePoll) clearTimeout(this.durablePoll);
+    this.durablePoll = undefined;
     this.onChange = noopOnChange;
   }
 
   rebindHost(bindings: BackgroundTaskHostBindings): void {
-    this.onChange = bindings.onChange;
+    this.resolveExecution = bindings.resolveExecution;
+    this.onChange = bindings.onChange ?? noopOnChange;
     this.sendCompletionNotification = bindings.sendCompletionNotification;
-    this.publishTerminalSnapshot = bindings.publishTerminal;
+    this.publishTerminalSnapshot = bindings.publishTerminal ?? noopOnChange;
     this.hostBound = true;
+    this.scheduleDurablePoll();
     this.onChange();
     for (const task of this.tasks.values()) {
       if (!this.deliveryReady.has(task)) continue;
@@ -841,6 +873,161 @@ export class BackgroundTaskRegistry {
     await mkdir(runtimeDirAbs, { recursive: true });
     this.runtimeDir = { abs: runtimeDirAbs, display: runtimeDirDisplay };
     return this.runtimeDir;
+  }
+
+  private readonly remoteRestores = new Map<string, Promise<void>>();
+
+  async restoreRemoteTasks(ctx: BackgroundTaskContext): Promise<void> {
+    const provider = this.resolveExecution?.();
+    const key = JSON.stringify([provider?.id, provider?.cwd, ctx.cwd, this.durablePollGeneration]);
+    const pending = this.remoteRestores.get(key);
+    if (pending) return pending;
+    const restore = this.restoreRemoteTasksOnce(ctx);
+    this.remoteRestores.set(key, restore);
+    try { await restore; }
+    finally { if (this.remoteRestores.get(key) === restore) this.remoteRestores.delete(key); }
+  }
+
+  private async restoreRemoteTasksOnce(ctx: BackgroundTaskContext): Promise<void> {
+    const provider = this.resolveExecution?.();
+    const remote = provider ? captureRemote(provider, ctx.cwd, this.maxOutputBytes) : undefined;
+    if (!remote) return;
+    const generation = this.durablePollGeneration;
+    const valid = () => generation === this.durablePollGeneration && !this.shuttingDown && this.resolveExecution?.()?.id === remote.id && this.resolveExecution?.()?.cwd === remote.cwd;
+    const records = await remote.api.list(remote.cwd);
+    if (!valid()) return;
+    for (const record of records) {
+      if (!/^[\w-]{1,100}$/.test(record.id) || record.cwd !== remote.cwd) throw new Error('Invalid remote discovery record');
+      const existing = this.tasks.get(record.id);
+      if (existing) {
+        if (existing.execution?.kind !== 'external' || existing.execution.id !== remote.id || existing.execution.cwd !== remote.cwd)
+          throw new Error(`Remote task ID collision: ${record.id}`);
+        continue;
+      }
+      const task: BgTask = { id: record.id, name: record.name, command: record.command,
+        cwd: remote.cwd, status: 'running', outputPath: join(remote.root, `${record.id}.output`), outputAbsPath: join(remote.root, `${record.id}.output`), metadataAbsPath: join(remote.root, `${record.id}.output.json`),
+        startTime: record.startedAt, bytesWritten: 0, isAgent: false, notified: false,
+        notifyOnCompletion: false, triggerOnCompletion: false, waiters: [], lifetime: 'persistent',
+        execution: { kind: 'external', id: remote.id, cwd: remote.cwd } };
+      this.taskClients.set(task, remote);
+      this.restoredDurable.add(task);
+      this.durableTasks.add(task);
+      this.tasks.set(task.id, task);
+      try {
+        const fresh = record.status === 'running' ? await remote.get(record.id) : await remote.adapt(record);
+        if (!valid()) return;
+        this.applyDurableRecord(task, fresh);
+      }
+      catch (error) { if (!valid()) return; task.error = `Remote task unavailable: ${String(error)}`; }
+    }
+    this.scheduleDurablePoll();
+    this.onChange();
+  }
+
+  async restoreDurableTasks(ctx: BackgroundTaskContext): Promise<void> {
+    if (!this.durableEnabled) return;
+    const records = await this.durableClient.list(ctx.cwd);
+    for (const diagnostic of records.diagnostics ?? []) {
+      this.logger.error(`Persistent task ${diagnostic.id}: ${diagnostic.message}`);
+    }
+    for (const record of records) {
+      if (this.tasks.has(record.id)) continue;
+      const task: BgTask = {
+        id: record.id,
+        name: record.name,
+        command: record.command,
+        description: record.description,
+        cwd: record.cwd,
+        status: 'running',
+        outputPath: record.outputFile,
+        outputAbsPath: record.outputFile,
+        metadataAbsPath: join(record.outputFile, '..', 'record.json'),
+        startTime: record.startedAt,
+        bytesWritten: record.outputBytes ?? 0,
+        isAgent: false,
+        notified: false,
+        notifyOnCompletion: false,
+        triggerOnCompletion: false,
+        waiters: [],
+      };
+      this.restoredDurable.add(task);
+      this.durableTasks.add(task);
+      this.tasks.set(task.id, task);
+      this.applyDurableRecord(task, record);
+    }
+    this.scheduleDurablePoll();
+    this.pruneOldTasks();
+  }
+
+  private applyDurableRecord(task: BgTask, record: durable.TaskRecord): void {
+    if (task.status !== 'running') return;
+    task.lifetime = 'persistent';
+    if (task.execution?.kind !== 'external') task.execution = { kind: 'local', id: 'local', cwd: record.cwd };
+    task.metadataAbsPath = task.execution?.kind === 'external' ? `${record.outputFile}.json` : join(record.outputFile, '..', 'record.json');
+    task.bytesWritten = record.outputBytes ?? task.bytesWritten;
+    task.signal = record.signal;
+    task.outputPath = record.outputFile;
+    task.outputAbsPath = record.outputFile;
+    task.startTime = record.startedAt;
+    task.status = record.status;
+    task.endTime = record.finishedAt;
+    task.exitCode = record.exitCode;
+    task.error = record.diagnostic === 'timeout' && task.timeoutSeconds !== undefined
+      ? `Timed out after ${task.timeoutSeconds}s`
+      : record.diagnostic === 'output-cap'
+        ? `Output exceeded cap of ${formatSize(this.maxOutputBytes)}`
+        : record.diagnostic ?? (record.status === 'failed'
+          ? `Exited with code ${record.exitCode ?? 'null'}${record.signal ? ` (${record.signal})` : ''}`
+          : undefined);
+    const metadataReady = task.execution?.kind === 'external' ? this.writeMetadata(task) : Promise.resolve();
+    void metadataReady.catch(error => this.logger.error('Remote cache metadata failed', error));
+    if (task.status !== 'running') {
+      task.finalized = true;
+      for (const waiter of task.waiters.splice(0)) waiter();
+      if (!this.restoredDurable.has(task)) {
+        const deliver = async () => {
+          await metadataReady;
+          await task.terminalPublicationGate;
+          if (this.restoredDurable.has(task) || this.shuttingDown) return;
+          this.deliveryReady.add(task);
+          this.publishTerminal(task);
+          this.notifyCompletion(task);
+        };
+        void deliver().catch(error => this.logger.error('Durable task delivery failed', error));
+      }
+    }
+    this.onChange();
+  }
+
+  private durablePollCursor = 0;
+  private readonly durableRefreshing = new Set<BgTask>();
+  private scheduleDurablePoll(): void {
+    if (this.durablePoll || this.shuttingDown || !this.hostBound) return;
+    const generation = this.durablePollGeneration;
+    this.durablePoll = setTimeout(() => {
+      this.durablePoll = undefined;
+      const candidates = [...this.tasks.values()].filter(task => this.durableTasks.has(task) && task.status === 'running');
+      for (let index = 0; index < candidates.length; index++) {
+        if (this.durableRefreshing.size >= 4) break;
+        const task = candidates[this.durablePollCursor % candidates.length];
+        this.durablePollCursor++;
+        if (task === undefined) continue;
+        if (this.durableRefreshing.has(task)) continue;
+        this.durableRefreshing.add(task);
+        void (this.taskClients.get(task) ?? this.durableClient).get(task.id).then(record => {
+          if (generation === this.durablePollGeneration) this.applyDurableRecord(task, record);
+        }).catch(error => {
+          task.error = `Persistent task unavailable: ${String(error)}`;
+          this.onChange();
+          this.logger.error(`Durable task refresh failed: ${task.id}`, error);
+        }).finally(() => {
+          this.durableRefreshing.delete(task);
+        });
+      }
+      this.pruneOldTasks();
+      this.scheduleDurablePoll();
+    }, 1000);
+    this.durablePoll.unref();
   }
 
   async restoreTerminalTasks(ctx: BackgroundTaskContext): Promise<number> {
@@ -894,15 +1081,31 @@ export class BackgroundTaskRegistry {
     if (this.shuttingDown)
       throw new Error('Cannot start a background task while Pi is shutting down');
 
+    const execution = this.resolveExecution?.();
+    const admittedCwd = ctx.cwd;
+    if (execution !== undefined && (
+      execution === null || typeof execution !== 'object' ||
+      typeof execution.spawn !== 'function' ||
+      (execution.id !== undefined && (typeof execution.id !== 'string' || !execution.id.trim())) ||
+      (execution.cwd !== undefined && (typeof execution.cwd !== 'string' || !execution.cwd.trim()))
+    )) throw new Error('Invalid background execution provider');
+    const descriptor = execution
+      ? { kind: 'external' as const, id: execution.id ?? 'external', ...(execution.cwd !== undefined ? { cwd: execution.cwd } : {}) }
+      : { kind: 'local' as const, id: 'local', cwd: admittedCwd };
     const isAgent = options.isAgent ?? false;
-    const baseInvocation = shellInvocation(normalizedCommand, this.platform, this.env);
+    if (execution && isAgent) throw new Error('External bg_run requires isAgent:false');
+    const remote = execution ? captureRemote(execution, admittedCwd, this.maxOutputBytes) : undefined;
+    const externalSpawn = execution?.spawn.bind(execution);
+    const baseInvocation = execution
+      ? { shell: '', args: [], dialect: 'posix' as const, windowsVerbatimArguments: false }
+      : shellInvocation(normalizedCommand, this.platform, this.env);
     const piTelemetryRequested = isAgent && commandMayLaunchPiAgent(normalizedCommand, this.env);
     const piTelemetryLaunch =
       piTelemetryRequested && baseInvocation.dialect === 'posix'
         ? resolvePiLaunch({ platform: this.platform })
         : undefined;
 
-    const dir = await this.ensureRuntimeDir(ctx);
+    const dir = await this.ensureRuntimeDir({ ...ctx, cwd: admittedCwd });
     const id = this.makeTaskIdFn();
     const outputAbsPath = join(dir.abs, `${id}.output`);
     const metadataAbsPath = join(dir.abs, `${id}.json`);
@@ -943,6 +1146,80 @@ export class BackgroundTaskRegistry {
       terminalPublicationGate: options.terminalPublicationGate,
       waiters: [],
     };
+    task.execution = descriptor;
+    task.cwd = admittedCwd;
+    if (execution) task.managedStopWaitMs = 10000;
+    if (remote) {
+      if (this.tasks.has(id)) throw new Error(`Background task ID collision: ${id}`);
+      task.cwd = remote.cwd;
+      task.outputAbsPath = join(remote.root, `${id}.output`);
+      task.outputPath = task.outputAbsPath;
+      task.metadataAbsPath = `${task.outputAbsPath}.json`;
+      task.lifetime = 'persistent';
+      this.taskClients.set(task, remote);
+      this.durableTasks.add(task);
+      this.tasks.set(id, task);
+      this.scheduleDurablePoll();
+      try {
+        const record = await remote.api.start({ id, cwd: remote.cwd, name: taskName,
+          command: normalizedCommand, description, timeoutSeconds: timeoutSeconds ?? 0,
+          maxOutputBytes: this.maxOutputBytes, ownerSession: ctx.sessionId ?? '',
+          notifyOnCompletion: task.notifyOnCompletion, triggerOnCompletion: task.triggerOnCompletion });
+        if (record.id !== id) throw new Error('Remote task ID mismatch');
+        this.applyDurableRecord(task, await remote.adapt(record));
+      } catch (error) {
+        try { this.applyDurableRecord(task, await remote.get(id)); }
+        catch {
+          task.error = `Admission uncertain for task ${id}: ${String(error)}. Inspect this ID; do not retry the command.`;
+          this.onChange();
+          throw new Error(task.error);
+        }
+      }
+      return task;
+    }
+    if (!execution && !isAgent && this.durableEnabled) {
+      const taskEnvironment: Record<string, string> = {};
+      for (const [key, value] of Object.entries(this.env)) {
+        if (value !== undefined) taskEnvironment[key] = value;
+      }
+      this.durableTasks.add(task);
+      this.tasks.set(id, task);
+      this.scheduleDurablePoll();
+      try {
+        const record = await this.durableClient.start({
+          id,
+          cwd: admittedCwd,
+          name: taskName,
+          command: normalizedCommand,
+          ...(description === undefined ? {} : { description }),
+          shell: baseInvocation.shell,
+          args: baseInvocation.args,
+          windowsVerbatimArguments: baseInvocation.windowsVerbatimArguments,
+          env: taskEnvironment,
+          timeoutSeconds: timeoutSeconds ?? 0,
+          maxOutputBytes: this.maxOutputBytes,
+          ownerSession: ctx.sessionId ?? '',
+          notifyOnCompletion: task.notifyOnCompletion,
+          triggerOnCompletion: task.triggerOnCompletion,
+        });
+        this.applyDurableRecord(task, record);
+      } catch (error) {
+        if (error instanceof Error && /^(Invalid start request|Invalid task id|Task metadata exceeds 12000 byte limit)$/.test(error.message)) {
+          this.tasks.delete(id);
+          throw error;
+        }
+        try {
+          this.applyDurableRecord(task, await this.durableClient.get(id));
+        } catch {
+          task.error = `Admission uncertain for task ${id}: ${error instanceof Error ? error.message : String(error)}. Inspect this task ID; do not retry the command.`;
+          this.onChange();
+          throw new Error(task.error);
+        }
+      }
+      this.scheduleDurablePoll();
+      this.onChange();
+      return task;
+    }
     this.tasks.set(id, task);
 
     const stream = createWriteStream(outputAbsPath, { flags: 'a', encoding: 'utf8' });
@@ -966,6 +1243,7 @@ export class BackgroundTaskRegistry {
     });
 
     try {
+      if (this.shuttingDown) throw new Error('Cannot launch task while Pi is shutting down');
       let commandToSpawn = normalizedCommand;
       if (piTelemetryRequested) {
         if (baseInvocation.dialect === 'posix') {
@@ -987,8 +1265,8 @@ export class BackgroundTaskRegistry {
         commandToSpawn === normalizedCommand
           ? baseInvocation
           : shellInvocation(commandToSpawn, this.platform, this.env);
-      const child = this.spawn(invocation.shell, invocation.args, {
-        cwd: ctx.cwd,
+      const child = externalSpawn ? externalSpawn(normalizedCommand, isAgent) : this.spawn(invocation.shell, invocation.args, {
+        cwd: admittedCwd,
         detached: this.platform !== 'win32',
         stdio: ['ignore', 'pipe', 'pipe'],
         env: this.env,
@@ -997,7 +1275,7 @@ export class BackgroundTaskRegistry {
       });
 
       task.child = child;
-      task.pid = child.pid;
+      task.pid = execution ? undefined : child.pid;
 
       child.stdout?.on('data', (data) => {
         this.appendChildOutput(task, data, 'stdout');
@@ -1008,10 +1286,14 @@ export class BackgroundTaskRegistry {
 
       child.on('error', (error) => {
         this.writeNotice(task, `\n[background task spawn error: ${error.message}]\n`);
-        void this.finalizeTask(task, 'failed', null, undefined, error.message);
+        void this.finalizeTask(task, 'failed', null, undefined, execution ? `Remote outcome unknown: ${error.message}` : error.message);
       });
 
       child.on('close', (code, signalName) => {
+        if (execution && code === null && signalName === null) {
+          void this.finalizeTask(task, 'failed', null, undefined, 'Remote outcome unknown: missing verified exit status');
+          return;
+        }
         let status: TaskStatus;
         let error: string | undefined;
         if (task.killKind === 'user' || task.killKind === 'shutdown') {
@@ -1022,7 +1304,7 @@ export class BackgroundTaskRegistry {
         } else if (task.killKind === 'output_cap') {
           status = 'failed';
           error = task.error ?? `Output exceeded cap of ${formatSize(this.maxOutputBytes)}`;
-        } else if ((code ?? 0) === 0) {
+        } else if (execution ? code === 0 && !signalName : (code ?? 0) === 0) {
           status = 'completed';
         } else {
           status = 'failed';
@@ -1032,6 +1314,11 @@ export class BackgroundTaskRegistry {
         void this.finalizeTask(task, status, code, signalName, error);
       });
 
+      if (task.killKind) this.requestKill(task, 'SIGTERM');
+      if (this.shuttingDown && !task.killKind) {
+        task.killKind = 'shutdown';
+        this.requestKill(task, 'SIGTERM');
+      }
       if (timeoutSeconds !== undefined) {
         task.timeoutHandle = setTimeout(() => {
           if (task.status !== 'running') return;
@@ -1058,7 +1345,12 @@ export class BackgroundTaskRegistry {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.writeNotice(task, `\n[background task spawn exception: ${message}]\n`);
-      await this.finalizeTask(task, 'failed', null, undefined, message);
+      if (execution && task.child && !task.finalized) {
+        task.killKind = 'shutdown';
+        this.requestKill(task, 'SIGTERM');
+        await this.waitForEnd(task, 10000);
+      }
+      await this.finalizeTask(task, 'failed', null, undefined, execution ? `Remote outcome unknown: ${message}` : message);
       throw new Error(`Failed to start background task: ${message}`);
     }
   }
@@ -1073,6 +1365,7 @@ export class BackgroundTaskRegistry {
     ctx: BackgroundTaskContext,
     request: StartManagedTaskOptions,
   ): Promise<BgTask> {
+    if (this.resolveExecution?.() !== undefined) throw new Error('Managed tasks require local execution');
     if (this.shuttingDown)
       throw new Error('Cannot start a managed background task while Pi is shutting down');
     if (!/^[a-zA-Z0-9_.-]+$/u.test(request.id))
@@ -1172,6 +1465,7 @@ export class BackgroundTaskRegistry {
     ctx: BackgroundTaskContext,
     request: StartAttestedPiTaskOptions,
   ): Promise<BgTask> {
+    if (this.resolveExecution?.() !== undefined) throw new Error('Attested Pi tasks require local execution');
     if (this.shuttingDown)
       throw new Error('Cannot start an attested Pi task while Pi is shutting down');
 
@@ -1486,6 +1780,19 @@ export class BackgroundTaskRegistry {
     if (task.status !== 'running') {
       throw new Error(`Task ${task.id} is ${task.status}, not running`);
     }
+    if (this.durableTasks.has(task)) {
+      if (kind === 'shutdown') return task;
+      let record = await (this.taskClients.get(task) ?? this.durableClient).cancel(task.id);
+      const deadline = Date.now() + 10000;
+      while (record.status === 'running' && Date.now() < deadline) {
+        await new Promise<void>(resolve => setTimeout(resolve, 100));
+        record = await (this.taskClients.get(task) ?? this.durableClient).get(task.id);
+      }
+      this.applyDurableRecord(task, record);
+      if (record.status !== 'killed')
+        throw new Error(task.error ?? 'Cancellation did not produce a verified terminal result');
+      return task;
+    }
     task.killKind = kind;
     if (reason) task.error = reason;
     this.requestKill(task, 'SIGTERM');
@@ -1496,10 +1803,15 @@ export class BackgroundTaskRegistry {
         : await this.waitForEnd(task, stopWaitMs);
     const forceFailure = this.windowsKillStates.get(task)?.forceFailure;
     if (forceFailure !== undefined) throw forceFailure;
+    if (task.execution?.kind === 'external' && snapshot(task).status === 'failed') {
+      throw new Error(task.error ?? 'Remote outcome unknown');
+    }
     if (!stopped) {
-      throw new Error(
-        `Task ${task.id} did not exit within ${formatDuration(stopWaitMs)} after cancellation`,
-      );
+      if (task.execution?.kind === 'external') {
+        await this.finalizeTask(task, 'failed', null, undefined, 'Remote outcome unknown: cancellation deadline exceeded');
+      }
+      if (task.finalized && task.status === 'running') await this.waitForEnd(task, 10000);
+      throw new Error(task.execution?.kind === 'external' ? (task.error ?? 'Remote outcome unknown') : `Task ${task.id} did not exit within ${formatDuration(stopWaitMs)} after cancellation`);
     }
     return task;
   }
@@ -1537,6 +1849,10 @@ export class BackgroundTaskRegistry {
     const read = await boundedRead(task.outputAbsPath, maxBytes, tail);
     const direction = tail ? 'tail' : 'head';
     let text = read.content.length > 0 ? read.content : '(no output yet)';
+    if (this.durableTasks.has(task) && task.error) {
+      const label = task.error.startsWith('Timed out') ? 'background task timeout' : 'background task error';
+      text += `\n\n[${label}: ${task.error}]`;
+    }
     if (read.truncated) {
       const omitted = read.totalBytes - read.bytesRead;
       const notice = `\n\n[Showing ${direction} ${formatSize(read.bytesRead)} of ${formatSize(read.totalBytes)}; ${formatSize(omitted)} omitted. Full output: ${task.outputPath}]`;
@@ -1561,6 +1877,7 @@ export class BackgroundTaskRegistry {
   }
 
   private async writeMetadataSnapshot(task: BgTask, value: BgTaskSnapshot): Promise<void> {
+    if (this.durableTasks.has(task) && task.execution?.kind !== 'external') return;
     const write = async () => {
       await writeJsonAtomic(task.metadataAbsPath, value);
     };
@@ -2042,6 +2359,17 @@ export class BackgroundTaskRegistry {
     if (task.status !== 'running') {
       throw new Error(`Task ${task.id} is ${task.status}, not running`);
     }
+    if (task.execution?.kind === 'external') {
+      if (task.killSignalSent || task.finalized) return;
+      if (!task.child) return;
+      task.killSignalSent = true;
+      task.killEscalationTimer = setTimeout(() => {
+        void this.finalizeTask(task, 'failed', null, undefined, 'Remote outcome unknown: cancellation deadline exceeded');
+      }, 10000).unref();
+      try { task.child.kill(signal); }
+      catch (error) { void this.finalizeTask(task, 'failed', null, undefined, `Remote outcome unknown: ${BackgroundTaskRegistry.errorMessage(error)}`); }
+      return;
+    }
     if (task.managedCancel !== undefined) {
       if (task.managedCancelRequested) return;
       task.managedCancelRequested = true;
@@ -2180,7 +2508,7 @@ export class BackgroundTaskRegistry {
   }
 
   private publishTerminal(task: BgTask): void {
-    if (!this.deliveryReady.has(task) || !this.hostBound || task.terminalPublished || task.terminalPublishInFlight) return;
+    if (this.restoredDurable.has(task) || !this.deliveryReady.has(task) || !this.hostBound || task.terminalPublished || task.terminalPublishInFlight) return;
     task.terminalPublishInFlight = true;
     if (task.terminalPublicationGate === undefined) {
       this.tryPublishTerminalNow(task);
@@ -2201,7 +2529,7 @@ export class BackgroundTaskRegistry {
 
   private tryPublishTerminalNow(task: BgTask): void {
     try {
-      if (!this.hostBound || task.terminalPublished) return;
+      if (this.restoredDurable.has(task) || !this.hostBound || task.terminalPublished) return;
       this.publishTerminalSnapshot(snapshot(task));
       task.terminalPublished = true;
       if (task.terminalPublishRetryHandle) {
@@ -2229,7 +2557,7 @@ export class BackgroundTaskRegistry {
   }
 
   private notifyCompletion(task: BgTask): void {
-    if (!this.deliveryReady.has(task) || !this.hostBound || !task.notifyOnCompletion || task.notified || this.shuttingDown) return;
+    if (this.restoredDurable.has(task) || !this.deliveryReady.has(task) || !this.hostBound || !task.notifyOnCompletion || task.notified || this.shuttingDown) return;
     task.notified = true;
     const exit =
       task.exitCode === undefined ? '' : `\n  <exit-code>${String(task.exitCode)}</exit-code>`;
@@ -2293,6 +2621,23 @@ export class BackgroundTaskRegistry {
     task.exitCode = exitCode;
     task.signal = signal ?? null;
 
+    if (task.execution?.kind === 'external') {
+      let cleanupTimer: NodeJS.Timeout | undefined;
+      try {
+        await Promise.race([
+          Promise.resolve(task.child?.dispose?.()),
+          new Promise<never>((_, reject) => {
+            cleanupTimer = setTimeout(() => reject(new Error('cleanup deadline exceeded')), 1000);
+          }),
+        ]);
+      }
+      catch (cleanupError) {
+        finalStatus = 'failed';
+        finalError = `Remote outcome unknown: backend cleanup failed: ${BackgroundTaskRegistry.errorMessage(cleanupError)}`;
+      } finally {
+        if (cleanupTimer) clearTimeout(cleanupTimer);
+      }
+    }
     // Keep status="running" until the final wrapped-agent fragment has been
     // consumed and the output plus terminal metadata are durable. Publishing a
     // terminal state earlier lets bg_status observe the previous assistant
@@ -2327,7 +2672,7 @@ export class BackgroundTaskRegistry {
     } catch (metadataError) {
       finalStatus = 'failed';
       task.status = 'failed';
-      task.error = `Terminal metadata write failed: ${metadataError instanceof Error ? metadataError.message : String(metadataError)}`;
+      task.error = `${finalError ? `${finalError}; ` : ''}Terminal metadata write failed: ${metadataError instanceof Error ? metadataError.message : String(metadataError)}`;
       this.logger.error(
         `[background-tasks] failed to write metadata for ${task.id}:`,
         metadataError,
@@ -2386,6 +2731,9 @@ export class BackgroundTaskRegistry {
     ctx: BackgroundTaskContext,
   ): BgTask | undefined {
     if (!isJsonObject(value)) throw new Error('task metadata must be an object');
+    if (isJsonObject(value['execution']) && value['execution']['kind'] === 'external') {
+      throw new Error('external task metadata requires a live registry handoff');
+    }
     const status = value['status'];
     if (status === 'running') {
       throw new Error('running task metadata cannot be restored without live process ownership');
@@ -2488,7 +2836,7 @@ export class BackgroundTaskRegistry {
   private pruneOldTasks(): void {
     if (this.tasks.size <= this.maxRecentTasks) return;
     const removable = [...this.tasks.values()]
-      .filter((task) => task.status !== 'running' && task.terminalPublished &&
+      .filter((task) => task.status !== 'running' && (this.restoredDurable.has(task) || task.terminalPublished) &&
         (!task.notifyOnCompletion || task.notified || this.shuttingDown))
       .sort((a, b) => (a.endTime ?? a.startTime) - (b.endTime ?? b.startTime));
     while (this.tasks.size > this.maxRecentTasks && removable.length > 0) {

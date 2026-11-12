@@ -375,7 +375,7 @@ void describe('package', () => {
     ]);
     assert.equal(
       p.pi.image,
-      'https://raw.githubusercontent.com/ismailsaleekh/pi-background-tasks/main/logo.png',
+      'https://raw.githubusercontent.com/CrossStar/pi-background-tasks/main/logo.png',
     );
     assert.match(p.scripts['test:agent-loop'] ?? '', /scripted-provider/);
     assert.match(p.scripts['test:full'] ?? '', /test:agent-loop/);

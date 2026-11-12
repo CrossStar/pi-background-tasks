@@ -13,6 +13,27 @@
       "state": "pass"
     },
     {
+      "authored_body_sha256": "sha256:98fa22736d29d4c09f369ba4f054c8c8d6a8763a535e625210e3c7a82072625e",
+      "covers_sources": [
+        "src/core/execution-backend.ts"
+      ],
+      "doc_id": "api/execution-backends-v1",
+      "rel": "docs/api/execution-backends-v1.md",
+      "required": true,
+      "state": "missing"
+    },
+    {
+      "authored_body_sha256": "sha256:dfc4347914f30db34e4accf1253589f1a63454ef69757b8d5892d1cd753a209b",
+      "covers_sources": [
+        "src/core/persistent-runtime.ts",
+        "src/core/remote-persistent.ts"
+      ],
+      "doc_id": "PERSISTENT-REMOTE",
+      "rel": "docs/PERSISTENT-REMOTE.md",
+      "required": true,
+      "state": "missing"
+    },
+    {
       "authored_body_sha256": "sha256:fa4a269344b13026b1ea509db0949a7c6b5ad244ee80023e18a6c4e469a93f3c",
       "covers_sources": [
         "extensions/anthropic-attribution.ts",
@@ -36,7 +57,7 @@
       "state": "stale-authored-prose"
     },
     {
-      "authored_body_sha256": "sha256:1c85059c485e9153042f17eeb817c2dc4ef353f5618572d89f8277d07af08ba7",
+      "authored_body_sha256": "sha256:11b2201f54b2e24180dd7dcc294a4158514e1f3b048a7b3bdbc1f22423ea9532",
       "covers_sources": [
         "src/core/common.ts",
         "src/core/registry.ts",
@@ -61,7 +82,7 @@
       "state": "stale-authored-prose"
     },
     {
-      "authored_body_sha256": "sha256:4986030ad6e5c8098d057fd9b8e215d9b683218fdfba39d7d13865996521761f",
+      "authored_body_sha256": "sha256:3dd39d87e943462111d8092bc63a600b135db72405ae29cda7ef087123a1ac72",
       "covers_sources": [
         "extensions/background-tasks.ts",
         "src/core/update-check.ts",
@@ -74,6 +95,22 @@
       "required": true,
       "reviewer": "existing-gpt-5.5-host-panel-plus-operator-update-delta",
       "state": "stale-authored-prose"
+    },
+    {
+      "authored_body_sha256": "sha256:8c92875dd1a782ec663270f10c454037a9a80ba54afa33d5b8b52c31a492c47e",
+      "covers_sources": [
+        "src/persistent/client.ts",
+        "src/persistent/daemon.mjs",
+        "src/persistent/remote-bridge.mjs",
+        "src/persistent/shared.d.mts",
+        "src/persistent/shared.mjs",
+        "src/persistent/supervisor.mjs",
+        "src/persistent/windows-tree.mjs"
+      ],
+      "doc_id": "subsystems/persistent-runtime",
+      "rel": "docs/subsystems/persistent-runtime.md",
+      "required": true,
+      "state": "missing"
     }
   ],
   "docs": {
@@ -93,6 +130,18 @@
       "mode": "generated",
       "rel": "docs/INDEX.md",
       "review_policy": "contract",
+      "stability": "stable"
+    },
+    "PERSISTENT-REMOTE": {
+      "audience": "maintainer",
+      "covers_sources": [
+        "src/core/persistent-runtime.ts",
+        "src/core/remote-persistent.ts"
+      ],
+      "covers_surfaces": [],
+      "mode": "authored",
+      "rel": "docs/PERSISTENT-REMOTE.md",
+      "review_policy": "behavioral",
       "stability": "stable"
     },
     "PUBLISHING": {
@@ -141,6 +190,17 @@
       ],
       "mode": "mixed",
       "rel": "docs/api/eventbus-v1.md",
+      "review_policy": "behavioral",
+      "stability": "evolving"
+    },
+    "api/execution-backends-v1": {
+      "audience": "maintainer",
+      "covers_sources": [
+        "src/core/execution-backend.ts"
+      ],
+      "covers_surfaces": [],
+      "mode": "authored",
+      "rel": "docs/api/execution-backends-v1.md",
       "review_policy": "behavioral",
       "stability": "evolving"
     },
@@ -401,6 +461,23 @@
       "review_policy": "behavioral",
       "stability": "stable"
     },
+    "subsystems/persistent-runtime": {
+      "audience": "maintainer",
+      "covers_sources": [
+        "src/persistent/client.ts",
+        "src/persistent/daemon.mjs",
+        "src/persistent/remote-bridge.mjs",
+        "src/persistent/shared.d.mts",
+        "src/persistent/shared.mjs",
+        "src/persistent/supervisor.mjs",
+        "src/persistent/windows-tree.mjs"
+      ],
+      "covers_surfaces": [],
+      "mode": "authored",
+      "rel": "docs/subsystems/persistent-runtime.md",
+      "review_policy": "behavioral",
+      "stability": "evolving"
+    },
     "tools/bg_kill": {
       "audience": "agent",
       "covers_sources": [],
@@ -575,7 +652,7 @@
   ],
   "generator": "scripts/docs/generate.mjs",
   "package": {
-    "description": "Pi extension for durable background shell tasks and local attested Pi runs.",
+    "description": "CrossStar fork of pi-background-tasks with native execution backends and local/SSH task persistence.",
     "engines": {
       "node": ">=22.19.0"
     },
@@ -584,6 +661,7 @@
       "./extensions/background-tasks.ts"
     ],
     "files": [
+      "CHANGELOG.md",
       "LICENSE",
       "README.md",
       "docs/",
@@ -596,10 +674,10 @@
       "logo.png",
       "src/"
     ],
-    "image": "https://raw.githubusercontent.com/ismailsaleekh/pi-background-tasks/main/logo.png",
+    "image": "https://raw.githubusercontent.com/CrossStar/pi-background-tasks/main/logo.png",
     "name": "pi-background-tasks",
     "type": "module",
-    "version": "2.7.1"
+    "version": "2.8.0"
   },
   "public_surface_ids": [
     "command:bg",
@@ -628,28 +706,28 @@
         "id": "command:bg",
         "kind": "command",
         "name": "bg",
-        "source": "src/extension.ts:532"
+        "source": "src/extension.ts:599"
       },
       {
         "description": "Clear finished background task footer notices",
         "id": "command:bg-clear",
         "kind": "command",
         "name": "bg-clear",
-        "source": "src/extension.ts:574"
+        "source": "src/extension.ts:641"
       },
       {
         "description": "Open the background task manager UI",
         "id": "command:bg-tasks",
         "kind": "command",
         "name": "bg-tasks",
-        "source": "src/extension.ts:566"
+        "source": "src/extension.ts:633"
       },
       {
         "description": "Show how to update pi-background-tasks to the latest published version",
         "id": "command:bg-update",
         "kind": "command",
         "name": "bg-update",
-        "source": "src/extension.ts:582"
+        "source": "src/extension.ts:649"
       },
       {
         "description": "Show or set Claude cache retention for this session (short, long, default)",
@@ -663,28 +741,28 @@
         "id": "command:jobs",
         "kind": "command",
         "name": "jobs",
-        "source": "src/extension.ts:620"
+        "source": "src/extension.ts:687"
       },
       {
         "description": "Stop a running background task: /kill <id>",
         "id": "command:kill",
         "kind": "command",
         "name": "kill",
-        "source": "src/extension.ts:664"
+        "source": "src/extension.ts:731"
       },
       {
         "description": "Show bounded output from a background task: /logs <id> [maxBytes]",
         "id": "command:logs",
         "kind": "command",
         "name": "logs",
-        "source": "src/extension.ts:633"
+        "source": "src/extension.ts:700"
       },
       {
         "description": "Open the Claude-like background task manager UI",
         "id": "command:tasks",
         "kind": "command",
         "name": "tasks",
-        "source": "src/extension.ts:558"
+        "source": "src/extension.ts:625"
       }
     ],
     "eventbus": [
@@ -712,7 +790,7 @@
         "id": "renderer:background-task-notification",
         "kind": "renderer",
         "name": "background-task-notification",
-        "source": "src/extension.ts:412"
+        "source": "src/extension.ts:462"
       }
     ],
     "shortcut": [
@@ -721,14 +799,14 @@
         "id": "shortcut:ctrl+alt+c",
         "kind": "shortcut",
         "name": "ctrl+alt+c",
-        "source": "src/extension.ts:612"
+        "source": "src/extension.ts:679"
       },
       {
         "description": "Open focused background task footer dock",
         "id": "shortcut:shift+down",
         "kind": "shortcut",
         "name": "shift+down",
-        "source": "src/extension.ts:605"
+        "source": "src/extension.ts:672"
       }
     ],
     "tool": [
@@ -754,7 +832,7 @@
           ],
           "type": "object"
         },
-        "source": "src/extension.ts:923"
+        "source": "src/extension.ts:990"
       },
       {
         "description": "Read bounded output from a background task for deliberate inspection; this is not a waiting primitive. Output is capped at 50.0KB for model safety and points to the full output file when truncated.",
@@ -788,7 +866,7 @@
           ],
           "type": "object"
         },
-        "source": "src/extension.ts:878"
+        "source": "src/extension.ts:945"
       },
       {
         "description": "Start a named long-running shell command in the background and return immediately with a task ID and output path. By default, completed, failed, or killed terminal state is delivered automatically as <background-task-notification> and starts a follow-up agent turn; do not sleep or poll merely to wait. Output is written to .pi/tasks and model-visible logs are bounded to 50.0KB.",
@@ -845,7 +923,7 @@
           ],
           "type": "object"
         },
-        "source": "src/extension.ts:697"
+        "source": "src/extension.ts:764"
       },
       {
         "description": "Opt-in evidence-oriented direct Pi spawn. Launches exactly one `pi --mode json` child, records raw Pi events/stderr, hashes prompt/report/output, observes OAuth through ModelRegistry, and emits a strict attestation sidecar only after successful completion.",
@@ -906,7 +984,7 @@
           ],
           "type": "object"
         },
-        "source": "src/extension.ts:782"
+        "source": "src/extension.ts:849"
       },
       {
         "description": "Inspect one background task or list all running/recent background tasks. This is a point-in-time inspection tool, not a waiting primitive.",
@@ -930,7 +1008,7 @@
           "required": [],
           "type": "object"
         },
-        "source": "src/extension.ts:847"
+        "source": "src/extension.ts:914"
       }
     ],
     "workflow": []
@@ -958,14 +1036,23 @@
     "src/core/durable-fs.ts": [
       "subsystems/child-launch-durability-and-safety"
     ],
+    "src/core/execution-backend.ts": [
+      "api/execution-backends-v1"
+    ],
     "src/core/extension-api.ts": [
       "api/eventbus-v1"
+    ],
+    "src/core/persistent-runtime.ts": [
+      "PERSISTENT-REMOTE"
     ],
     "src/core/pi-launch.ts": [
       "subsystems/child-launch-durability-and-safety"
     ],
     "src/core/registry.ts": [
       "subsystems/background-task-runtime"
+    ],
+    "src/core/remote-persistent.ts": [
+      "PERSISTENT-REMOTE"
     ],
     "src/core/update-check.ts": [
       "subsystems/host-ui-and-telemetry"
@@ -975,6 +1062,27 @@
     ],
     "src/extension.ts": [
       "subsystems/host-ui-and-telemetry"
+    ],
+    "src/persistent/client.ts": [
+      "subsystems/persistent-runtime"
+    ],
+    "src/persistent/daemon.mjs": [
+      "subsystems/persistent-runtime"
+    ],
+    "src/persistent/remote-bridge.mjs": [
+      "subsystems/persistent-runtime"
+    ],
+    "src/persistent/shared.d.mts": [
+      "subsystems/persistent-runtime"
+    ],
+    "src/persistent/shared.mjs": [
+      "subsystems/persistent-runtime"
+    ],
+    "src/persistent/supervisor.mjs": [
+      "subsystems/persistent-runtime"
+    ],
+    "src/persistent/windows-tree.mjs": [
+      "subsystems/persistent-runtime"
     ],
     "src/ui/background-tasks-manager.ts": [
       "subsystems/host-ui-and-telemetry"

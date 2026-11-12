@@ -46,6 +46,13 @@ import {
   installBackgroundTaskExtensionApi,
   type BackgroundTaskExtensionService,
 } from './core/extension-api.ts';
+import { persistentRuntimeBundle } from './core/persistent-runtime.ts';
+import {
+  BG_EXECUTION_CHANNEL,
+  BG_PERSISTENT_READY_CHANNEL,
+  BG_EXECUTION_HOOK_CHANNEL,
+  type BackgroundExecutionProvider,
+} from './core/execution-backend.ts';
 import {
   BackgroundTasksManager,
   type BackgroundTaskForUi,
@@ -209,8 +216,47 @@ function renderPlainResult(result: TextToolResult, options: ToolRenderResultOpti
 }
 
 export default function backgroundTasksExtension(pi: ExtensionAPI): void {
+  const resolveExecution = (): BackgroundExecutionProvider | undefined => {
+    const request: { provider?: BackgroundExecutionProvider; error?: unknown } = {};
+    let selected: BackgroundExecutionProvider | undefined;
+    let conflict = false;
+    Object.defineProperty(request, 'provider', {
+      enumerable: true,
+      get: () => selected,
+      set: (provider: BackgroundExecutionProvider | undefined) => {
+        if (selected !== undefined && provider !== selected) conflict = true;
+        selected = provider;
+      },
+    });
+    pi.events.emit(BG_EXECUTION_CHANNEL, request);
+    if (conflict) throw new Error('Multiple background execution providers');
+    if (request.error !== undefined) {
+      throw request.error instanceof Error ? request.error : new Error(String(request.error));
+    }
+    return request.provider;
+  };
+  let releaseExecutionHook: (() => void) | undefined;
+  let releaseReadyHook: (() => void) | undefined;
+  const installExecutionHook = () => {
+    releaseReadyHook?.();
+    releaseReadyHook = pi.events.on(BG_PERSISTENT_READY_CHANNEL, () => {
+      if (currentCtx) void registry.restoreRemoteTasks(backgroundTaskContext(currentCtx)).catch(error => console.error('Remote persistent restore failed', error));
+    });
+    releaseExecutionHook?.();
+    releaseExecutionHook = pi.events.on(BG_EXECUTION_HOOK_CHANNEL, (request: unknown) => {
+      if (typeof request === 'object' && request !== null) {
+        Object.assign(request, { available: true });
+        if ('includePersistentRuntime' in request && request.includePersistentRuntime === true) {
+          try { Object.assign(request, { runtimeBundle: persistentRuntimeBundle() }); }
+          catch (error) { Object.assign(request, { error }); }
+        }
+      }
+    });
+  };
+  installExecutionHook();
   const seenTaskIds = new Set<string>();
   let currentCtx: ExtensionContext | undefined;
+
   let dockOpen = false;
   let statusInterval: NodeJS.Timeout | undefined;
   let latestKnownVersion: string | undefined;
@@ -218,6 +264,7 @@ export default function backgroundTasksExtension(pi: ExtensionAPI): void {
 
   let eventService: BackgroundTaskExtensionService | undefined;
   let registry = new BackgroundTaskRegistry({
+    resolveExecution,
     onChange: () => {
       updateUi();
     },
@@ -356,6 +403,9 @@ export default function backgroundTasksExtension(pi: ExtensionAPI): void {
               return result;
             },
             rerunTask: async (task: BackgroundTaskForUi) => {
+              if (task.execution?.kind === 'external') {
+                throw new Error('External tasks cannot be rerun from the dock; submit a new bg_run after selecting the intended backend and cwd.');
+              }
               const rerunOptions: StartTaskOptions = {
                 name: taskDisplayName(task),
                 isAgent: task.isAgent,
@@ -457,12 +507,24 @@ export default function backgroundTasksExtension(pi: ExtensionAPI): void {
   }
 
   pi.on('session_start', async (_event, ctx) => {
+    installExecutionHook();
     const taskCtx = backgroundTaskContext(ctx);
+    if (registry.isShuttingDown()) {
+      registry = new BackgroundTaskRegistry({ resolveExecution, sendCompletionNotification: (message, options) => pi.sendMessage(message, options) });
+    }
     registry = acquireProcessRegistry(taskCtx, registry);
     registry.setShuttingDown(false);
     currentCtx = ctx;
     await registry.ensureRuntimeDir(taskCtx);
     await registry.restoreTerminalTasks(taskCtx);
+    try {
+      await registry.restoreDurableTasks(taskCtx);
+      await registry.restoreRemoteTasks(taskCtx);
+    } catch (error) {
+      const message = `Could not restore persistent background tasks: ${error instanceof Error ? error.message : String(error)}`;
+      console.error(message);
+      if (ctx.hasUI) ctx.ui.notify(message, 'error');
+    }
     eventService?.close();
     eventService = installBackgroundTaskExtensionApi({
       events: pi.events,
@@ -471,6 +533,7 @@ export default function backgroundTasksExtension(pi: ExtensionAPI): void {
       isShuttingDown: () => registry.isShuttingDown(),
     });
     registry.rebindHost({
+      resolveExecution,
       onChange: () => {
         updateUi();
       },
@@ -491,6 +554,10 @@ export default function backgroundTasksExtension(pi: ExtensionAPI): void {
   });
 
   pi.on('session_shutdown', async (event, ctx) => {
+    releaseExecutionHook?.();
+    releaseExecutionHook = undefined;
+    releaseReadyHook?.();
+    releaseReadyHook = undefined;
     currentCtx = undefined;
     if (statusInterval) {
       clearInterval(statusInterval);

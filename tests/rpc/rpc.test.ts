@@ -1,3 +1,4 @@
+import '../helpers/isolated-service.ts';
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
@@ -259,7 +260,7 @@ void describe('rpc', () => {
       );
       const started = await rpc.wait(notifyWith(/Started RPC Echo/));
       const id = extractTaskId(started);
-      await new Promise((resolve) => setTimeout(resolve, 250));
+      await rpc.wait(event => field(event, 'method') === 'setStatus' && /1 done/.test(String(field(event, 'statusText'))));
       await rpc.prompt(`/logs ${id} 200`);
       const logs = await rpc.wait(notifyWith(/rpc-ok[\s\S]*Full output/));
       assert.ok(logs);
@@ -306,7 +307,7 @@ void describe('rpc', () => {
         `/bg --name "RPC Two" ${await writeExactlyScript(cwd, 'rpc-two', '123456')}`,
       );
       await rpc.wait(notifyWith(/Started RPC Two/));
-      await new Promise((resolve) => setTimeout(resolve, 350));
+      await rpc.wait(event => field(event, 'method') === 'setStatus' && /2 done/.test(String(field(event, 'statusText'))));
       await rpc.prompt(`/kill ${idOne}`);
       await rpc.wait(notifyWith(/Background kill error:[\s\S]*not running/));
       await rpc.prompt(`/logs ${idOne} -10`);
@@ -351,7 +352,7 @@ void describe('rpc', () => {
         );
         const started = await rpc.wait(notifyWith(/Started RPC Output Cap/));
         const id = extractTaskId(started);
-        await new Promise((resolve) => setTimeout(resolve, 750));
+        await rpc.wait(event => field(event, 'method') === 'setStatus' && /1 failed/.test(String(field(event, 'statusText'))));
         await rpc.prompt('/jobs');
         await rpc.wait(
           notifyWith(

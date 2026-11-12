@@ -30,6 +30,18 @@ The table below remains the exhaustive acceptance source. Do not replace it with
 | Custom UI | footer status + focused bottom dock overlay |
 | Custom provider | package-owned `anthropic` subscription-OAuth attribution transport; provider-gated, no non-Anthropic override |
 
+## Execution backend lifecycle coverage
+
+`tests/unit/execution-backend.test.ts` covers admission snapshots, local defaults, resolver rebinding, no fallback on discovery/spawn errors, confirmed cancellation versus unknown transport outcome, connecting-time timeout, disposal, and unsupported agent admission. `tests/sdk/sdk.test.ts` exercises the actual extension discovery/readiness events, provider conflicts, local log ownership, and agent rejection through both tools and the EventBus. External signal exits without a cancellation request must fail rather than report success. These fixtures do not replace Sydney's real SSH and jump-host lifecycle tests.
+
+## Persistent task acceptance
+
+Persistent local commands must survive the admitting Pi process, preserve their task ID and output path, and remain cancellable from a replacement process. Run real process-boundary tests as well as SDK session replacement tests; constructing two registries in one process alone does not prove restart survival.
+
+Required failure scenarios include daemon SIGKILL with a live supervisor, duplicate admission with a launch side-effect counter, offline timeout/output cap, cancellation before launch readiness, and unavailable supervisor control. Recovery must never execute a stored command again. Supervisor records own execution truth; Pi must not rewrite them with notification state. Offline completions and recovered running tasks must not notify or wake a replacement conversation or emit unsolicited terminal EventBus events.
+
+Packaged standalone entrypoints must run with Node without development-only TypeScript loaders. Linux validation does not establish Windows process-tree cancellation or macOS pathname-socket recovery; report untested platform behavior explicitly.
+
 ## Required gates
 
 | Gate | Command | Required in default `npm run test`? | Status |

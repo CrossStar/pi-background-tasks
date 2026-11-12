@@ -998,6 +998,10 @@ export class BackgroundTasksManager implements Component {
         ` ${task.command}`,
       );
     }
+    if (task.execution?.kind === 'external') {
+      body.push(` Backend: ${task.execution.id}`);
+      body.push(` Execution cwd: ${task.execution.cwd ?? 'owned by provider (legacy contract)'}`);
+    }
     if (task.isAgent) {
       if (task.model) body.push(` Model: ${formatModelDetail(task)}`);
       if (task.contextUsage?.contextWindow) body.push(` Context: ${formatContextDetail(task)}`);

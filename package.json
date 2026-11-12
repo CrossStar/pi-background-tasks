@@ -1,13 +1,10 @@
 {
   "name": "pi-background-tasks",
-  "version": "2.7.1",
-  "description": "Pi extension for durable background shell tasks and local attested Pi runs.",
+  "version": "2.8.0",
+  "description": "CrossStar fork of pi-background-tasks with native execution backends and local/SSH task persistence.",
   "type": "module",
   "license": "ISC",
   "author": "Ismail <ismailsalikhodjaev@gmail.com>",
-  "publishConfig": {
-    "access": "public"
-  },
   "keywords": [
     "pi-package",
     "pi-extension",
@@ -20,18 +17,19 @@
     "task-manager",
     "pi-dev"
   ],
-  "homepage": "https://github.com/ismailsaleekh/pi-background-tasks#readme",
+  "homepage": "https://github.com/CrossStar/pi-background-tasks#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/ismailsaleekh/pi-background-tasks.git"
+    "url": "git+https://github.com/CrossStar/pi-background-tasks.git"
   },
   "bugs": {
-    "url": "https://github.com/ismailsaleekh/pi-background-tasks/issues"
+    "url": "https://github.com/CrossStar/pi-background-tasks/issues"
   },
   "files": [
     "extensions/",
     "src/",
     "README.md",
+    "CHANGELOG.md",
     "docs/TESTING.md",
     "docs/TEST_PLAN.md",
     "docs/PUBLISHING.md",
@@ -44,7 +42,7 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test:type-safety": "tsx --test tests/package/type-safety.test.ts",
-    "test:unit": "tsx --test tests/unit/**/*.test.ts",
+    "test:unit": "tsx --test tests/unit/**/*.test.ts tests/persistent/*.test.mjs",
     "test:sdk": "tsx --test --test-concurrency=1 tests/sdk/**/*.test.ts",
     "test:rpc": "tsx --test tests/rpc/**/*.test.ts",
     "test:component": "tsx --test tests/component/**/*.test.ts",
@@ -71,7 +69,7 @@
     "prepack": "npm run docs:verify && npm run payload:check"
   },
   "pi": {
-    "image": "https://raw.githubusercontent.com/ismailsaleekh/pi-background-tasks/main/logo.png",
+    "image": "https://raw.githubusercontent.com/CrossStar/pi-background-tasks/main/logo.png",
     "extensions": [
       "./extensions/anthropic-attribution.ts",
       "./extensions/background-tasks.ts"
@@ -94,5 +92,6 @@
   "engines": {
     "node": ">=22.19.0"
   },
-  "dependencies": {}
+  "dependencies": {},
+  "private": true
 }

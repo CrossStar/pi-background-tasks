@@ -2,3 +2,13 @@ node_modules/
 .pi/
 *.tgz
 .DS_Store
+/dist/
+/logs/
+/cache/
+/.cache/
+/coverage/
+*.log
+.env
+.env.*
+!.env.example
+*.tsbuildinfo

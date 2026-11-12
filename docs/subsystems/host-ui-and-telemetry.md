@@ -20,6 +20,10 @@ This subsystem owns the extension entrypoint, command/tool registration, footer 
 - shortcuts: `shift+down` and `ctrl+alt+c`;
 - renderer: `background-task-notification`.
 
+## Execution discovery
+
+The host emits `sydney-kit:bg-execution:v1` synchronously for each task admission and exposes the compatible `sydney-kit:bg-hook:v1` readiness probe. Discovery errors and conflicting providers fail closed. Readiness listeners are detached on shutdown and rebound on session start; registry handoff receives the new host resolver, while admitted tasks keep their original backend. External task reruns from the dock are rejected to prevent executing an old remote command against a new target. See [execution backends v1](../api/execution-backends-v1.md).
+
 ## Footer status
 
 The footer widget is updated on task changes and once per second while a session is active. The background-task entry remains visible: if there are no running tasks and no unseen finished tasks, it displays `bg idle · Shift↓` (or `focused` while the dock is open). An available update segment is appended. Footer text, manager titles and selected rows use the theme accent foreground without a background fill.
@@ -74,7 +78,7 @@ When a newer semver is found, the footer segment is `⬆ v<latest> /bg-update`. 
 ## Reload and shutdown
 
 
-On quit or session replacement (`new`, `resume`, `fork`), the extension marks the registry as shutting down, clears the status interval, kills running tasks with reason `Killed during Pi session shutdown`, reports cleanup failures through the UI when possible, releases the process-supervised registry, and closes the event service.
+On quit or session replacement (`new`, `resume`, `fork`), the extension stops session-owned tasks, detaches durable local non-agent tasks, clears polling and the status interval, releases the process registry, and closes the event service. Session start restores durable project tasks from the service without unsolicited model wake or terminal EventBus replay. Offline completions remain visible as unread tasks. Reload preserves the same registry and its existing delivery eligibility.
 
 ## Related docs
 

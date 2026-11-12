@@ -1931,7 +1931,7 @@ export function verifyPackageFacts(root, codeFacts, docsModel) {
     }
   }
   const image = pkg.pi?.image;
-  if (!image || !/^https:\/\/raw\.githubusercontent\.com\/ismailsaleekh\/pi-background-tasks\/main\/logo\.png$/u.test(image)) throw new DocsGateError('package pi.image must be the GitHub raw main logo.png URL');
+  if (!image || !/^https:\/\/raw\.githubusercontent\.com\/CrossStar\/pi-background-tasks\/main\/logo\.png$/u.test(image)) throw new DocsGateError('package pi.image must be the GitHub raw main logo.png URL');
   const texts = markdownEntries(root, docsModel);
   for (const entry of texts.values()) {
     const obsolete = new RegExp(`pi-background-tasks@(?:v)?(?!${codeFacts.package.version.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b)\\d+\\.\\d+\\.\\d+`, 'u');

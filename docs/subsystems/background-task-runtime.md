@@ -15,21 +15,25 @@ The runtime owns task identity, shell invocation, process lifecycle, bounded log
 
 - Task statuses are exactly `running`, `completed`, `failed`, and `killed`.
 - Terminal statuses are exactly `completed`, `failed`, and `killed`.
-- Runtime directory: `.pi/tasks/<session-id>-<pid>/` under the project cwd.
+- Session-owned runtime directory: `.pi/tasks/<session-id>-<pid>/` under the project cwd. Durable local non-agent tasks use stable per-user service storage instead.
 - Per task: `<task-id>.output` and `<task-id>.json`; some agent modes may add wrapper or attestation files.
 - A process-global supervisor retains the live registry across Pi extension reload. The replacement extension runtime acquires the same registry by resolved cwd, session id, and Pi pid, then rebinds UI, notification, and EventBus delivery.
 - In-memory recent retention prunes oldest finished tasks over the limit while preserving running tasks and terminal tasks with pending publication or notification.
 - `resolveTask` accepts exact ids or unambiguous prefixes and fails loudly for empty, unknown, or ambiguous ids.
 
+## Execution backends
+
+[Execution backends v1](../api/execution-backends-v1.md) defines synchronous provider discovery and child ownership. The default remains the local shell. External providers are captured at admission, never fall back locally, and support only non-agent commands. Logs remain local. Cancellation and transport errors retain explicit unknown-outcome diagnostics instead of claiming a successful stop.
+
 ## Starting managed tasks
 
-
+Managed tasks retain their existing cooperative cancellation and publication lifecycle.
 
 ## Starting ordinary tasks
 
 `startTask` trims surrounding command whitespace and rejects an empty command. It derives task name from explicit `name`, then `description`, then command. Names are compacted and truncated; callers should still provide concise names.
 
-Shell commands are spawned in the task cwd using `stdio: ['ignore','pipe','pipe']`, `windowsHide:true`, the extension environment, and detached process groups on non-Windows. Shell commands are **not sandboxed**.
+For session-owned processes, shell commands are spawned in the task cwd using `stdio: ['ignore','pipe','pipe']`, `windowsHide:true`, the extension environment, and detached process groups on non-Windows. Shell commands are **not sandboxed**.
 
 Default delivery at registry level is `notifyOnCompletion:true` and `triggerOnCompletion:false`; surface tools may override that. [`bg_run`](../tools/bg_run.md) explicitly defaults both to true.
 
@@ -43,11 +47,11 @@ Windows defaults to `cmd.exe` or `ComSpec`, with args `['/d','/s','/c','"<comman
 
 All child stdout/stderr is written to the output file unless it is recognized control telemetry from a wrapped Pi agent. The runtime enforces `PI_BG_MAX_OUTPUT_BYTES` or the default 20 MiB output cap; exceeding it appends an error notice, kills the task, and finalizes as `failed`.
 
-Model-visible log reads use bounded file reads capped by `MAX_LOG_BYTES` (currently up to 50 KiB). Truncated reads preserve the full output path in the notice.
+Model-visible log reads use bounded file reads capped by `MAX_LOG_BYTES` (currently up to 50 KiB). Persistent-task failure diagnostics are included in the log response separately from the supervisor-owned log file. Truncated reads preserve the full output path in the notice.
 
 ## Telemetry
 
-Telemetry is task-owned. It is parsed from task output/control lines when the task reports it; it is never copied from the parent session. Optional telemetry includes context usage, token usage, tool usage, and model. Malformed optional telemetry is ignored without clearing prior task state; unknown wrapped-agent JSON is written to the transcript rather than silently dropped.
+Telemetry is task-owned. Durable non-agent commands preserve raw output and do not interpret telemetry control records; telemetry parsing belongs to session-owned agent execution. It is parsed from task output/control lines when the task reports it; it is never copied from the parent session. Optional telemetry includes context usage, token usage, tool usage, and model. Malformed optional telemetry is ignored without clearing prior task state; unknown wrapped-agent JSON is written to the transcript rather than silently dropped.
 
 `isAgent` explicitly controls telemetry wrapping. If `isAgent:false`, a `pi -p` command is treated as an ordinary command. If `isAgent:true` and the POSIX command contains an interceptable `pi -p`, `pi --print`, or `pi --mode json` invocation, the runtime writes a wrapper and converts Pi JSON events into task-owned metrics and human transcript lines. Path-qualified `pi` commands are not intercepted. On Windows cmd, telemetry wrapping is unavailable and the task records `win32-cmd-cannot-safely-intercept-pi-argv`.
 
@@ -63,7 +67,9 @@ Terminal delivery is eligible only after terminal metadata has been persisted an
 
 On `session_shutdown` with reason `reload`, the host detaches stale Pi callbacks without setting shutdown state or stopping tasks. Live child handles, timers, managed cancellation hooks, output streams, and task identity remain in the process-global registry. The replacement runtime acquires that registry during `session_start`, installs a fresh EventBus service, and rebinds callbacks before normal use. A task that reaches terminal state during the short detached interval keeps notification and terminal publication pending; rebinding retries those deliveries rather than marking them sent to a stale runtime.
 
-This is hot-reload continuity inside one Pi process, not restart reattachment. Quit and session replacement (`new`, `resume`, `fork`) still stop running tasks and release the supervised registry. Durable terminal shell history can be reconstructed from validated metadata in the same runtime directory, but a new Pi pid uses a new directory and no PID-only process adoption is attempted.
+Production local non-agent commands use the per-user daemon and a detached per-task supervisor. Their logs and records live in stable service storage, discovered by project cwd on session start. The supervisor owns output, timeout, cancellation, and terminal metadata; the registry never opens their output stream or rewrites their metadata. Polling is bounded and uses unreferenced timers. Shutdown detaches polling and leaves these commands running. Cancellation waits for a verified terminal record; unknown outcomes remain `failed` with a diagnostic.
+
+Agents, attested runs, managed workflows, and external execution providers retain session-owned semantics. Injecting `spawn` into registry options disables durable delegation for deterministic tests. Hot reload retains the live registry and delivery eligibility. Fresh session/process restoration suppresses both automatic notifications and terminal EventBus publication, including for restored running tasks; finished tasks remain unread in the UI. This does not promise exactly-once UI delivery across crashes.
 
 ## Stopping tasks
 

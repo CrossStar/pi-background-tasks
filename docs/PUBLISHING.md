@@ -9,7 +9,7 @@ covers_sources: []
 ---
 # Publishing pi-background-tasks
 
-Release checklist for npm publishing and standalone git publishing.
+Release checklist for the CrossStar fork's standalone Git releases. The package is marked `private: true` to prevent accidental publishing under the upstream npm name.
 
 The release version is always read from `package.json`:
 
@@ -19,11 +19,11 @@ VERSION=$(node -p "require('./package.json').version")
 printf 'pi-background-tasks@%s\n' "$VERSION"
 ```
 
-Verify tags in the actual release remote; do **not** advertise a `v$VERSION` git install target until that tag exists and points at the reviewed release commit. This checkout publishes Git releases to `github.com/CrossStar/pi-background-tasks` (`origin`). Package npm metadata still identifies the upstream `ismailsaleekh/pi-background-tasks`; a fork Git release does not publish or transfer the upstream npm package.
+Verify tags in the actual release remote; do **not** advertise a `v$VERSION` git install target until that tag exists and points at the reviewed release commit. This checkout publishes Git releases to `github.com/CrossStar/pi-background-tasks` (`origin`). Repository metadata identifies the CrossStar fork; the original author and license remain credited. A fork Git release does not publish or transfer the upstream npm package.
 
 ## Preconditions
 
-- npm account with publish rights for `pi-background-tasks`.
+- Git release authorization from the operator; npm publishing is disabled for this fork.
 - Git release repository for this checkout: `github.com/CrossStar/pi-background-tasks` (`origin`).
 - Clean worktree and final release commit in the standalone package repository.
 - Frontier model evidence, if any, uses Pi subscription/OAuth channels only; never metered APIs.
@@ -53,25 +53,19 @@ npm view pi-background-tasks name version --json
 
 `npm run test:full` is the full interactive gate (default gate plus PTY and agent-loop). Run it when certifying full TUI/agent-loop behavior, not for docs-only maintenance.
 
+## 2.8.0 validation scope
+
+Linux validation passed with `SHELL=/bin/bash npm test`: type-safety 2, unit/persistence 130, SDK 22, RPC 7, component 14, package 14 (189 passing test executions, no failures or skips; some checks overlap). Separate native/persistence checks passed 24/24; typecheck, smoke and npm packing also passed.
+
+Known limitation: with inherited `SHELL=fish`, two SDK Pi telemetry-wrapper tests fail because the wrapper emits POSIX function syntax. Bash validation does not certify fish compatibility. Run Pi with `SHELL=/bin/bash` when using this wrapper until fish support is fixed. PTY, agent-loop, Windows and compatibility-matrix checks were not run for this preparation. OS reboot recovery (`restartOnReboot`) is not implemented.
+
 ## Payload verification
 
 Use `npm pack --dry-run --json --ignore-scripts` output as the payload source of truth for payload inspection. Verify that `extensions/`, `src/`, `docs/`, `README.md`, `docs/TESTING.md`, `docs/TEST_PLAN.md`, `docs/PUBLISHING.md`, `docs/BACKGROUND-TASKS-INSTRUCTIONS.md`, root `logo.png`, and `LICENSE` match current `package.json.files`, and that tests/scripts/local `.pi` artifacts/node_modules/nested tarballs are excluded.
 
-## Publish to npm
+## npm publication policy
 
-Only after operator approval:
-
-```bash
-npm login
-npm publish --access public
-```
-
-Post-publish smoke with isolated Pi state:
-
-```bash
-PI_CODING_AGENT_DIR=$(mktemp -d) pi -e npm:pi-background-tasks@$VERSION --offline --no-tools --no-session -p "/jobs"
-pi install npm:pi-background-tasks@$VERSION
-```
+Do not publish this fork as the upstream `pi-background-tasks` npm package. Any future npm channel requires an independently owned package name, reviewed metadata and explicit operator authorization. Keep `private: true` for Git releases.
 
 ## Standalone git tag certification
 
@@ -88,4 +82,4 @@ pi install git:github.com/CrossStar/pi-background-tasks@v$VERSION
 
 ## pi.dev/packages
 
-The package includes the `pi-package` keyword and a `pi.extensions` manifest. After npm publish, it should be discoverable by pi.dev package indexing. If it does not appear automatically, refresh according to the package-gallery process.
+The fork retains the `pi-package` keyword and a `pi.extensions` manifest for Pi compatibility. No npm gallery publication is claimed for this Git-only release.

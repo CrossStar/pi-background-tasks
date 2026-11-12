@@ -9,9 +9,11 @@ covers_sources: []
 ---
 # `bg_run`
 
+Execution uses the provider captured at admission, or the local shell if none is selected. External backends support only `isAgent:false`; discovery and transport failures never fall back locally. Logs remain in the local runtime directory. An unverified remote outcome is reported as failed, not killed. See [execution backends v1](../api/execution-backends-v1.md).
+
 <!-- pi-docs:begin name="tool-contract-bg_run" generator="scripts/docs/generate.mjs" -->
 - Label: **Background Run**
-- Source: `src/extension.ts:697`
+- Source: `src/extension.ts:764`
 - Description: Start a named long-running shell command in the background and return immediately with a task ID and output path. By default, completed, failed, or killed terminal state is delivered automatically as <background-task-notification> and starts a follow-up agent turn; do not sleep or poll merely to wait. Output is written to .pi/tasks and model-visible logs are bounded to 50.0KB.
 - Root schema: `object`
 

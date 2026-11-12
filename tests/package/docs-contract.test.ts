@@ -20,7 +20,7 @@ void describe('docs package integration contract', () => {
     assert.ok(pkg.files.includes('logo.png'));
     assert.equal(
       pkg.pi?.image,
-      'https://raw.githubusercontent.com/ismailsaleekh/pi-background-tasks/main/logo.png',
+      'https://raw.githubusercontent.com/CrossStar/pi-background-tasks/main/logo.png',
     );
     assert.equal(pkg.scripts['docs:generate'], 'node scripts/docs/generate.mjs');
     assert.equal(pkg.scripts['docs:verify'], 'node scripts/docs/verify.mjs');

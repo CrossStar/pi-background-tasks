@@ -35,12 +35,14 @@ export interface TaskToolUsage {
 }
 
 export interface BgTaskSnapshot {
+  lifetime?: 'persistent' | 'session' | undefined;
   id: string;
   name?: string | undefined;
   command: string;
   description?: string | undefined;
   status: TaskStatus;
   outputPath: string;
+  execution?: import('./execution-backend.ts').BackgroundExecutionDescriptor | undefined;
   cwd: string;
   startTime: number;
   endTime?: number | undefined;
@@ -687,6 +689,7 @@ export function normalizeMaxBytes(value: unknown, fallback = DEFAULT_LOG_BYTES):
 
 export function snapshot(task: BgTask): BgTaskSnapshot {
   return {
+    lifetime: task.lifetime ?? 'session',
     id: task.id,
     name: taskDisplayName(task),
     command: task.command,
@@ -694,6 +697,7 @@ export function snapshot(task: BgTask): BgTaskSnapshot {
     status: task.status,
     outputPath: task.outputPath,
     cwd: task.cwd,
+    ...(task.execution ? { execution: { ...task.execution } } : {}),
     startTime: task.startTime,
     endTime: task.endTime,
     exitCode: task.exitCode,

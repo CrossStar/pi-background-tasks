@@ -1,3 +1,4 @@
+import '../helpers/isolated-service.ts';
 import { describe, it, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdir, mkdtemp, readFile, rm } from 'node:fs/promises';

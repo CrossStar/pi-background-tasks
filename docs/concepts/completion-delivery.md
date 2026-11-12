@@ -50,7 +50,9 @@ If either completion flag was intentionally disabled, manual inspection is allow
 
 ## Failures and suppression
 
-If notification send fails, the task resets `notified:false` and logs the error; it does not silently pretend delivery happened. During quit or session replacement, notifications are suppressed while running tasks are killed. During extension reload, stale host delivery is detached without killing tasks; a completion in that interval remains pending and is delivered after the replacement runtime rebinds.
+If notification send fails, the task resets `notified:false` and logs the error; it does not silently pretend delivery happened. During quit or session replacement, notifications are suppressed. Persistent local non-agent tasks detach and continue running; session-owned tasks retain shutdown cleanup. During extension reload, stale host delivery is detached without killing tasks; a completion in that interval remains pending and is delivered after the replacement runtime rebinds.
+
+Tasks recovered from the persistent service in a new Pi process or conversation are monitoring-only. Both already-finished and still-running recovered tasks suppress automatic completion messages, model wakeups, and unsolicited terminal EventBus publication in the replacement conversation. Suppression is distinct from successful notification delivery: results remain visible in task status and the monitor. This avoids delivering an old command's result into an unrelated conversation. It does not promise exactly-once message delivery across a host crash.
 
 ## Related docs
 

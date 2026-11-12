@@ -1,4 +1,6 @@
-import { describe, it, afterEach, type TestContext } from 'node:test';
+import { EventEmitter } from 'node:events';
+import { BG_EXECUTION_CHANNEL, BG_EXECUTION_HOOK_CHANNEL } from '../../src/core/execution-backend.js';
+import { describe, it, after, afterEach, type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
@@ -33,6 +35,16 @@ import {
 } from '../../src/core/extension-api.js';
 import { parsePackageInfo } from '../../src/core/update-check.js';
 
+const sdkServiceRoot = await mkdtemp(join(tmpdir(), 'pi-bg-sdk-service-'));
+process.env['PI_BG_SERVICE_DIR'] = sdkServiceRoot;
+after(async () => {
+  const { rpc, endpoint } = await import('../../src/persistent/shared.mjs');
+  try {
+    const identity = await rpc(endpoint('daemon', sdkServiceRoot), 'ping', {}, sdkServiceRoot) as { pid: number; startToken: string };
+    const confirmed = await rpc(endpoint('daemon', sdkServiceRoot), 'ping', {}, sdkServiceRoot) as { pid: number; startToken: string };
+    if (identity.pid === confirmed.pid && identity.startToken && identity.startToken === confirmed.startToken) process.kill(identity.pid, 'SIGTERM');
+  } catch { /* No daemon was started, or it already exited. */ }
+});
 const extensionPath = resolve('extensions/background-tasks.ts');
 const scriptedProviderPath = resolve('tests/scripted-provider/scripted-provider-extension.ts');
 const roots: string[] = [];
@@ -61,13 +73,14 @@ function resolvePiCli(): string | undefined {
 }
 
 interface SdkHarnessOptions {
+  cwd?: string;
   eventBus?: EventBus | undefined;
 }
 
 async function harness(options: SdkHarnessOptions = {}) {
   const root = await mkdtemp(join(tmpdir(), 'pi-bg-sdk-'));
   roots.push(root);
-  const cwd = join(root, 'project');
+  const cwd = options.cwd ?? join(root, 'project');
   const agentDir = join(root, 'agent');
   await mkdir(cwd, { recursive: true });
   await mkdir(agentDir, { recursive: true });
@@ -525,6 +538,54 @@ async function settledFooter(
 }
 
 void describe('sdk', () => {
+  void it('discovers native execution providers synchronously and rejects agent bypasses', async () => {
+    const eventBus = createEventBus();
+    let spawns = 0;
+    let disposals = 0;
+    const child = Object.assign(new EventEmitter(), {
+      stdout: new EventEmitter(), stderr: new EventEmitter(),
+      kill: () => true,
+      dispose: () => { disposals++; },
+    });
+    const unsubscribe = eventBus.on(BG_EXECUTION_CHANNEL, (request: unknown) => {
+      assert.ok(isJsonObject(request));
+      request['provider'] = { id: 'ssh:test', cwd: '/remote/captured', spawn: () => { spawns++; return child; } };
+    });
+    const { session, cwd } = await harness({ eventBus });
+    try {
+      const probe = { available: false };
+      eventBus.emit(BG_EXECUTION_HOOK_CHANNEL, probe);
+      assert.equal(probe.available, true);
+      const result = await exec(session, 'bg_run', { name: 'Remote SDK', command: 'remote-only-command', isAgent: false, notifyOnCompletion: false });
+      child.stdout.emit('data', 'remote-output\n');
+      child.emit('close', 0, null);
+      const task = await wait(session, taskFromResult(result).id);
+      assert.equal(task.status, 'completed');
+      assert.deepEqual(task.execution, { kind: 'external', id: 'ssh:test', cwd: '/remote/captured' });
+      assert.match(await readFile(join(cwd, task.outputPath), 'utf8'), /remote-output/);
+      await assert.rejects(() => exec(session, 'bg_run', { name: 'Agent', command: 'anything', isAgent: true }), /isAgent:false/);
+      await assert.rejects(() => exec(session, 'bg_run_pi_attested', { name: 'Attested', provider: 'test', model: 'test', prompt: 'test', reportPath: 'out.md' }), /local execution/);
+      const response = await emitEventRequest(eventBus, 'external-agent', 'run', { name: 'Agent', command: 'anything', isAgent: true, notifyOnCompletion: false, triggerOnCompletion: false });
+      assert.equal(response.ok, false);
+      assert.equal(spawns, 1);
+      assert.equal(disposals, 1);
+      const conflict = eventBus.on(BG_EXECUTION_CHANNEL, (request: unknown) => {
+        assert.ok(isJsonObject(request));
+        request['provider'] = { spawn: () => child };
+      });
+      try {
+        await assert.rejects(() => exec(session, 'bg_run', { name: 'Conflict', command: 'anything', isAgent: false }), /Multiple background/);
+      } finally { conflict(); }
+    } finally {
+      unsubscribe();
+      await session.extensionRunner.emit({ type: 'session_shutdown', reason: 'quit' });
+      const probe = { available: false };
+      eventBus.emit(BG_EXECUTION_HOOK_CHANNEL, probe);
+      assert.equal(probe.available, false);
+      session.dispose();
+    }
+  });
+
   void it('registers commands, tools, shortcuts, renderers, and runs with output and metadata files', async () => {
     const { session, cwd } = await harness();
     try {
@@ -567,16 +628,17 @@ void describe('sdk', () => {
         triggerOnCompletion: false,
       });
       const t = await wait(session, taskFromResult(r).id);
-      assert.equal(t.status, 'completed', await readFile(join(cwd, t.outputPath), 'utf8'));
+      assert.equal(t.status, 'completed', await readFile(resolve(cwd, t.outputPath), 'utf8'));
       assert.equal(t.name, 'SDK Echo');
       assert.equal(t.isAgent, false);
-      assert.ok(existsSync(join(cwd, t.outputPath)));
-      const metadataPath = join(cwd, t.outputPath.replace(/\.output$/, '.json'));
+      assert.equal(t.lifetime, 'persistent');
+      assert.ok(existsSync(resolve(cwd, t.outputPath)));
+      const metadataPath = join(dirname(resolve(cwd, t.outputPath)), 'record.json');
       assert.ok(existsSync(metadataPath));
       const metadata = await readJsonWithStatus(metadataPath, 'completed');
       assert.equal(metadata['status'], 'completed');
       assert.equal(metadata['name'], 'SDK Echo');
-      assert.equal(metadata['isAgent'], false);
+      assert.equal(metadata['outputFile'], t.outputPath);
       const logs = await exec(session, 'bg_logs', { taskId: t.id, maxBytes: 100 });
       assert.match(resultText(logs), /sdk-ok/);
       await assert.rejects(() => exec(session, 'bg_kill', { taskId: t.id }), /not running/);
@@ -730,7 +792,7 @@ void describe('sdk', () => {
         task.status === 'running' || task.status === 'completed',
         `immediate run response status should be a valid launch snapshot, got ${task.status}`,
       );
-      assert.ok(existsSync(join(cwd, task.outputPath)));
+      assert.ok(existsSync(resolve(cwd, task.outputPath)));
       const terminal = await waitForTerminalSnapshot(terminals, task.id);
       assert.equal(terminal.status, 'completed');
       assert.equal(terminals.filter((entry) => entry.id === task.id).length, 1);
@@ -1085,7 +1147,7 @@ console.error('sdk stderr');
       const rawResult: unknown = await tool.execute(
         'call-context',
         {
-          isAgent: false,
+          isAgent: true,
           name: 'Context SDK',
           command,
           notifyOnCompletion: false,
@@ -1135,7 +1197,7 @@ console.error('sdk stderr');
       assert.equal(metadata['model'], 'test-provider/test-model');
 
       const legacy = await exec(session, 'bg_run', {
-        isAgent: false,
+        isAgent: true,
         name: 'Legacy Context SDK',
         command: `node -e ${JSON.stringify('console.log(JSON.stringify({ type: "background-task-context-usage", tokens: 42, contextWindow: 1000, percent: 4.2 }))')}`,
         notifyOnCompletion: false,
@@ -1504,7 +1566,7 @@ console.log(JSON.stringify({ type: "message_end", message: secondMessage }));
       const t = await wait(session, taskFromResult(r).id);
       assert.equal(t.status, 'failed');
       assert.match(t.error ?? '', /ENOENT|no such file/i);
-      const metadataPath = join(cwd, t.outputPath.replace(/\.output$/, '.json'));
+      const metadataPath = join(dirname(resolve(cwd, t.outputPath)), 'record.json');
       const metadata = await readJsonWithStatus(metadataPath, 'failed');
       assert.equal(metadata['status'], 'failed');
     } finally {
@@ -1561,17 +1623,78 @@ console.log(JSON.stringify({ type: "message_end", message: secondMessage }));
     }
   });
 
-  void it('cleans up multiple running tasks on shutdown', async () => {
+  void it('suppresses old completion on the same extension session transition', async () => {
+    const { session } = await harness();
+    await session.bindExtensions({});
+    try {
+      const task = taskFromResult(await exec(session, 'bg_run', {
+        isAgent: false, name: 'Same extension transition',
+        command: `node -e ${JSON.stringify("setTimeout(() => {}, 1500)")}`,
+        notifyOnCompletion: true, triggerOnCompletion: true,
+      }));
+      await session.extensionRunner.emit({ type: 'session_shutdown', reason: 'quit' });
+      await session.extensionRunner.emit({ type: 'session_start', reason: 'new' });
+      const done = await wait(session, task.id);
+      assert.equal(done.status, 'completed');
+      assert.equal(done.notified, false);
+      assert.equal(customNotifications(session).length, 0);
+    } finally {
+      await session.extensionRunner.emit({ type: 'session_shutdown', reason: 'quit' });
+      session.dispose();
+    }
+  });
+
+  void it('preserves durable commands across SDK session shutdown and fresh session restoration', async () => {
+    const first = await harness();
+    await first.session.bindExtensions({});
+    const running = taskFromResult(await exec(first.session, 'bg_run', {
+      isAgent: false, name: 'SDK Surviving Command',
+      command: `node -e ${JSON.stringify('setTimeout(() => {}, 30000)')}`,
+      notifyOnCompletion: true, triggerOnCompletion: false,
+    }));
+    const offline = taskFromResult(await exec(first.session, 'bg_run', {
+      isAgent: false, name: 'SDK Offline Completion',
+      command: `node -e ${JSON.stringify("setTimeout(() => process.stdout.write('offline-done'), 1000)")}`,
+      notifyOnCompletion: true, triggerOnCompletion: false,
+    }));
+    await first.session.extensionRunner.emit({ type: 'session_shutdown', reason: 'quit' });
+    first.session.dispose();
+    await new Promise(resolve => setTimeout(resolve, 1500));
+    const eventBus = createEventBus();
+    const terminals: unknown[] = [];
+    const unsubscribe = eventBus.on(BG_TERMINAL_CHANNEL, event => { terminals.push(event); });
+    const second = await harness({ cwd: first.cwd, eventBus });
+    try {
+      await second.session.bindExtensions({});
+      const restored = firstTask(await exec(second.session, 'bg_status', { taskId: running.id }));
+      assert.equal(restored.status, 'running');
+      assert.equal(restored.outputPath, running.outputPath);
+      const completed = await wait(second.session, offline.id);
+      assert.equal(completed.status, 'completed');
+      assert.equal(completed.notified, false);
+      assert.match(resultText(await exec(second.session, 'bg_logs', { taskId: offline.id })), /offline-done/);
+      await exec(second.session, 'bg_kill', { taskId: running.id });
+      assert.equal((await wait(second.session, running.id)).status, 'killed');
+      assert.equal(customNotifications(second.session).length, 0);
+      assert.deepEqual(terminals, []);
+    } finally {
+      unsubscribe();
+      await second.session.extensionRunner.emit({ type: 'session_shutdown', reason: 'quit' });
+      second.session.dispose();
+    }
+  });
+
+  void it('cleans up multiple running agent tasks on shutdown', async () => {
     const { session } = await harness();
     const one = await exec(session, 'bg_run', {
-      isAgent: false,
+      isAgent: true,
       name: 'SDK Shutdown One',
       command: `node -e ${JSON.stringify('setTimeout(() => {}, 10000)')}`,
       notifyOnCompletion: false,
       triggerOnCompletion: false,
     });
     const two = await exec(session, 'bg_run', {
-      isAgent: false,
+      isAgent: true,
       name: 'SDK Shutdown Two',
       command: `node -e ${JSON.stringify('setTimeout(() => {}, 10000)')}`,
       notifyOnCompletion: false,

@@ -99,7 +99,7 @@ const service = server(async (method, p) => {
         const r = { id: p.id, cwd: p.cwd, name: p.name, command: p.command, description: p.description, ownerSession: p.ownerSession, notifyOnCompletion: p.notifyOnCompletion, triggerOnCompletion: p.triggerOnCompletion, status: 'running', startedAt: Date.now(), outputFile: path.join(dir, 'output.log'), capability: crypto.randomBytes(32).toString('hex') };
         fs.closeSync(fs.openSync(r.outputFile, 'wx', 0o600));
         atomic(target, r);
-        const c = spawn(process.execPath, [fileURLToPath(new URL('./supervisor.mjs', import.meta.url)), p.id], { env: { ...process.env, PI_BG_SERVICE_DIR: root }, detached: true, stdio: ['pipe', 'ignore', 'ignore'] });
+        const c = spawn(process.execPath, [fileURLToPath(new URL('./supervisor.mjs', import.meta.url)), p.id], { windowsHide: true, env: { ...process.env, PI_BG_SERVICE_DIR: root }, detached: true, stdio: ['pipe', 'ignore', 'ignore'] });
         c.on('error', () => { });
         c.stdin.on('error', () => { });
         c.stdin.end(JSON.stringify({ cwd: p.cwd, shellExecutable: p.shell, shellArgs: p.args, windowsVerbatimArguments: p.windowsVerbatimArguments, environment: p.env, timeoutMs: p.timeoutSeconds * 1000, outputCapBytes: p.maxOutputBytes }));

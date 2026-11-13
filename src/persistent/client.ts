@@ -78,7 +78,7 @@ export function createClient(options: {
         }
         catch { }
         const child = spawn(process.execPath, [fileURLToPath(new URL('./daemon.mjs', import.meta.url))], {
-            detached: true, stdio: 'ignore', env: { ...process.env, PI_BG_SERVICE_DIR: root },
+            windowsHide: true, detached: true, stdio: 'ignore', env: { ...process.env, PI_BG_SERVICE_DIR: root },
         });
         child.on('error', () => { });
         child.unref();

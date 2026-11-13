@@ -149,7 +149,7 @@ function launch() {
                 fs.chmodSync(address, 0o600);
             fd = fs.openSync(original.outputFile, 'a', 0o600);
             child = spawn(request.shellExecutable, request.shellArgs, {
-                cwd: request.cwd, env: request.environment, detached: process.platform !== 'win32', windowsVerbatimArguments: request.windowsVerbatimArguments === true, stdio: ['ignore', 'pipe', 'pipe'],
+                windowsHide: true, cwd: request.cwd, env: request.environment, detached: process.platform !== 'win32', windowsVerbatimArguments: request.windowsVerbatimArguments === true, stdio: ['ignore', 'pipe', 'pipe'],
             });
             active = true;
             groupOwned = Boolean(child.pid) && process.platform !== 'win32';

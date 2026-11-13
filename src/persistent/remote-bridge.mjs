@@ -36,7 +36,7 @@ async function ensure(ownerSession) {
         if (!['ECONNREFUSED', 'ENOENT'].includes(error.code)) throw error;
     }
     const child = spawn(process.execPath, [fileURLToPath(new URL('./daemon.mjs', import.meta.url))], {
-        detached: true, stdio: 'ignore', env: process.env,
+        windowsHide: true, detached: true, stdio: 'ignore', env: process.env,
     });
     let failure;
     child.on('error', error => { failure = error; });

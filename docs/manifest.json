@@ -98,7 +98,7 @@
       "state": "stale-authored-prose"
     },
     {
-      "authored_body_sha256": "sha256:767e148cf3e190e20cf9c5588dcf991c71e7fc9ad0915d89122e69801306a547",
+      "authored_body_sha256": "sha256:1a4f2d30c4cada131cc74943fc439b000cfda31117cbe9e17ae3b25de0bf1ae8",
       "covers_sources": [
         "src/persistent/client.ts",
         "src/persistent/daemon.mjs",

@@ -36,7 +36,7 @@ The table below remains the exhaustive acceptance source. Do not replace it with
 
 ## Persistent task acceptance
 
-Persistent local commands must survive the admitting Pi process, preserve their task ID and output path, and remain cancellable from a replacement process. Run real process-boundary tests as well as SDK session replacement tests; constructing two registries in one process alone does not prove restart survival.
+Persistent local commands must survive the admitting Pi process, preserve their task ID and output path, and remain cancellable from a replacement process resuming the same session ID. A different or forked session in the same cwd must neither restore nor control them. Legacy records without an owner must not be implicitly claimed. Check both local and SSH list/get/log/cancel paths, including direct task-ID attempts and repeated start IDs with a conflicting owner. Run real process-boundary tests as well as SDK session replacement tests; constructing two registries in one process alone does not prove restart survival.
 
 Required failure scenarios include daemon SIGKILL with a live supervisor, duplicate admission with a launch side-effect counter, offline timeout/output cap, cancellation before launch readiness, and unavailable supervisor control. Recovery must never execute a stored command again. Supervisor records own execution truth; Pi must not rewrite them with notification state. Offline completions and recovered running tasks must not notify or wake a replacement conversation or emit unsolicited terminal EventBus events.
 

@@ -35,6 +35,7 @@ export interface TaskToolUsage {
 }
 
 export interface BgTaskSnapshot {
+  ownerSession?: string | undefined;
   lifetime?: 'persistent' | 'session' | undefined;
   id: string;
   name?: string | undefined;
@@ -689,6 +690,7 @@ export function normalizeMaxBytes(value: unknown, fallback = DEFAULT_LOG_BYTES):
 
 export function snapshot(task: BgTask): BgTaskSnapshot {
   return {
+    ownerSession: task.ownerSession,
     lifetime: task.lifetime ?? 'session',
     id: task.id,
     name: taskDisplayName(task),

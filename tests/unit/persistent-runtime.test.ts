@@ -3,7 +3,35 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import net from 'node:net';
 import { spawn } from 'node:child_process';
+test('scoped client rejects old daemon without sending operations or replacing it', async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'pi-old-'));
+    const {endpoint} = await import('../../src/persistent/shared.mjs');
+    const {createClient} = await import('../../src/persistent/client.js');
+    const methods: string[] = [];
+    const service = net.createServer(socket => {
+        let text = '';
+        socket.on('data', chunk => {
+            text += chunk;
+            if (!text.includes('\n')) return;
+            methods.push(JSON.parse(text).method);
+            socket.end(JSON.stringify({result:{pid:process.pid,startToken:'old',protocolVersion:1}})+'\n');
+        });
+    });
+    await new Promise<void>(resolve=>service.listen(endpoint('daemon',root),resolve));
+    try {
+        const client = createClient({root});
+        await assert.rejects(client.get('a','A'),/lacks session ownership/);
+        await assert.rejects(client.cancel('a','A'),/lacks session ownership/);
+        await assert.rejects(client.list(root,'A'),/lacks session ownership/);
+        assert.ok(methods.every(method=>method==='ping'));
+        assert.ok(service.listening);
+    } finally {
+        await new Promise<void>(resolve=>service.close(()=>resolve()));
+        fs.rmSync(root,{recursive:true,force:true});
+    }
+});
 test('durable supervisors survive daemon restart and deduplicate admission', async () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'pi-persist-'));
     const client = (await import('../../src/persistent/client.js')).createClient({ root });
@@ -23,7 +51,7 @@ test('durable supervisors survive daemon restart and deduplicate admission', asy
     } throw Error('deadline'); };
     try {
         await client.ensureService();
-        const request = { id: 'once', cwd: root, name: 'once', command: 'node', shell: process.execPath, args: ['-e', 'require("fs").appendFileSync("counter","1");setTimeout(()=>{console.log("done");process.exit(7)},700)'], env: {}, timeoutSeconds: 5, maxOutputBytes: 1000 };
+        const request = { ownerSession: 'A', id: 'once', cwd: root, name: 'once', command: 'node', shell: process.execPath, args: ['-e', 'require("fs").appendFileSync("counter","1");setTimeout(()=>{console.log("done");process.exit(7)},700)'], env: {}, timeoutSeconds: 5, maxOutputBytes: 1000 };
         await Promise.all([client.start(request), client.start(request)]);
         process.kill(daemon, 'SIGKILL');
         await new Promise(r => setTimeout(r, 100));
@@ -32,6 +60,14 @@ test('durable supervisors survive daemon restart and deduplicate admission', asy
         const result = await wait('once');
         assert.equal(result.exitCode, 7);
         assert.equal(fs.readFileSync(result.outputFile, 'utf8'), 'done\n');
+        await assert.rejects(client.start({...request,ownerSession:'B'}),/ownership mismatch/);
+        await assert.rejects(client.start({...request,ownerSession:undefined}),/ownership mismatch/);
+        await assert.rejects(client.get('once','B'),/ownership mismatch/);
+        await assert.rejects(client.cancel('once','B'),/ownership mismatch/);
+        await assert.rejects(client.list(root,''),/Invalid ownerSession/);
+        assert.equal((await client.get('once','A')).id,'once');
+        assert.equal((await client.list(root,'A')).length,1);
+        assert.equal((await client.list(root,'B')).length,0);
         assert.equal((await client.start(request)).exitCode, 7);
         assert.equal((await client.cancel('once')).status,'failed');
         assert.equal((await client.cancel('once')).exitCode,7);
@@ -41,6 +77,16 @@ test('durable supervisors survive daemon restart and deduplicate admission', asy
         const restored=await client.list(root);
         assert.ok(restored.some(task=>task.id==='once'&&task.exitCode===7));
         assert.deepEqual(restored.diagnostics.map(item=>item.id).sort(),['corrupt','interrupted']);
+        for (let i=0;i<51;i++) {
+            const id = `aaa-${i}`;
+            const dir = path.join(root,'tasks',id);
+            fs.mkdirSync(dir);
+            fs.writeFileSync(path.join(dir,'record.json'),JSON.stringify({...result,id,ownerSession:'B',outputFile:path.join(dir,'output.log')}));
+        }
+        const scoped = await client.list(root,'A');
+        assert.deepEqual(scoped.map(item=>item.id),['once']);
+        assert.ok(scoped.diagnostics.every(item=>item.id==='unknown'&&item.message==='unreadable admission'));
+        assert.equal((await client.list(root,'B')).length,51);
         assert.equal(fs.readFileSync(path.join(root, 'counter'), 'utf8'), '1');
         const duplicate = spawn(process.execPath, ['src/persistent/supervisor.mjs', 'once'], { env: { ...process.env, PI_BG_SERVICE_DIR: root }, stdio: ['pipe', 'ignore', 'ignore'] });
         duplicate.stdin.end(JSON.stringify({ cwd: root, shellExecutable: request.shell, shellArgs: request.args, environment: {}, outputCapBytes: 1000 }));

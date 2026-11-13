@@ -13,7 +13,7 @@ This authored section defines the boundary: documentation facts are extracted fr
 
 <!-- pi-docs:begin name="docs-freshness-gate" generator="scripts/docs/generate.mjs" -->
 - Canonical package version: `2.8.0`
-- Governed markdown docs: 39
+- Governed markdown docs: 40
 - Public surfaces extracted: 18
 - Governed production sources: 25
 - Tool contracts extracted: 5

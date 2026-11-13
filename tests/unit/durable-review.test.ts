@@ -10,12 +10,31 @@ async function fixture() {
   let delivered = 0;
   const registry = new BackgroundTaskRegistry({ sendCompletionNotification: () => { delivered++; } });
   const client = Reflect.get(registry, 'durableClient');
-  const record = { id: '', name: 'test', command: 'true', cwd, status: 'running', startedAt: Date.now(), outputFile: join(cwd, 'output.log') };
+  const record = { ownerSession: 'first', id: '', name: 'test', command: 'true', cwd, status: 'running', startedAt: Date.now(), outputFile: join(cwd, 'output.log') };
   client.start = async (request: { id: string }) => { record.id = request.id; return { ...record }; };
   client.get = async () => ({ ...record });
   const ctx = { cwd, sessionId: 'first', modelRegistry: { getAll: () => [] } };
   return { registry, client, record, ctx, delivered: () => delivered };
 }
+
+test('restore skips foreign and unknown owners without claiming records', async () => {
+  const f = await fixture();
+  const records = [
+    { ...f.record, id: 'owned' },
+    { ...f.record, id: 'foreign', ownerSession: 'second' },
+    { ...f.record, id: 'legacy', ownerSession: undefined },
+  ];
+  f.client.list = async (_cwd: string, owner: string) => {
+    assert.equal(owner, 'first');
+    return records;
+  };
+  try {
+    await f.registry.restoreDurableTasks(f.ctx);
+    assert.deepEqual(f.registry.allTasks().map(task => task.id), ['owned']);
+    assert.equal(records.length, 3);
+    assert.equal(records[2]?.ownerSession, undefined);
+  } finally { f.registry.setShuttingDown(true); }
+});
 
 test('lost admission response reconciles the original ID without resubmitting', async () => {
   const f = await fixture();

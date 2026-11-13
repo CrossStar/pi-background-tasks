@@ -46,6 +46,7 @@ Generated navigation for every package-local documentation page. This index inte
 | [PERSISTENT-REMOTE](./PERSISTENT-REMOTE.md) | authored | behavioral | stable |
 | [PUBLISHING](./PUBLISHING.md) | authored | contract | stable |
 | [reference/runtime-contracts](./reference/runtime-contracts.md) | mixed | contract | evolving |
+| [session-ownership](./session-ownership.md) | authored | contract | evolving |
 | [subsystems/anthropic-attribution](./subsystems/anthropic-attribution.md) | authored | behavioral | evolving |
 | [subsystems/attested-pi-runs](./subsystems/attested-pi-runs.md) | authored | behavioral | evolving |
 | [subsystems/background-task-runtime](./subsystems/background-task-runtime.md) | authored | behavioral | stable |
@@ -81,7 +82,7 @@ Generated navigation for every package-local documentation page. This index inte
 - **concepts**: [concepts/completion-delivery](./concepts/completion-delivery.md)
 - **operations**: [operations/configuration](./operations/configuration.md), [operations/releasing](./operations/releasing.md), [operations/testing](./operations/testing.md), [operations/troubleshooting](./operations/troubleshooting.md)
 - **reference**: [reference/runtime-contracts](./reference/runtime-contracts.md), [reference/shortcuts-and-dock](./reference/shortcuts-and-dock.md)
-- **root**: [BACKGROUND-TASKS-INSTRUCTIONS](./BACKGROUND-TASKS-INSTRUCTIONS.md), [choose-a-workflow](./choose-a-workflow.md), [getting-started](./getting-started.md), [INDEX](./INDEX.md), [PERSISTENT-REMOTE](./PERSISTENT-REMOTE.md), [PUBLISHING](./PUBLISHING.md), [read-before-edit](./read-before-edit.md), [TEST_PLAN](./TEST_PLAN.md), [TESTING](./TESTING.md), [THIRD_PARTY_NOTICES](./THIRD_PARTY_NOTICES.md)
+- **root**: [BACKGROUND-TASKS-INSTRUCTIONS](./BACKGROUND-TASKS-INSTRUCTIONS.md), [choose-a-workflow](./choose-a-workflow.md), [getting-started](./getting-started.md), [INDEX](./INDEX.md), [PERSISTENT-REMOTE](./PERSISTENT-REMOTE.md), [PUBLISHING](./PUBLISHING.md), [read-before-edit](./read-before-edit.md), [session-ownership](./session-ownership.md), [TEST_PLAN](./TEST_PLAN.md), [TESTING](./TESTING.md), [THIRD_PARTY_NOTICES](./THIRD_PARTY_NOTICES.md)
 - **subsystems**: [subsystems/anthropic-attribution](./subsystems/anthropic-attribution.md), [subsystems/attested-pi-runs](./subsystems/attested-pi-runs.md), [subsystems/background-task-runtime](./subsystems/background-task-runtime.md), [subsystems/child-launch-durability-and-safety](./subsystems/child-launch-durability-and-safety.md), [subsystems/docs-freshness-gate](./subsystems/docs-freshness-gate.md), [subsystems/host-ui-and-telemetry](./subsystems/host-ui-and-telemetry.md), [subsystems/persistent-runtime](./subsystems/persistent-runtime.md)
 - **tools**: [tools/bg_kill](./tools/bg_kill.md), [tools/bg_logs](./tools/bg_logs.md), [tools/bg_run](./tools/bg_run.md), [tools/bg_run_pi_attested](./tools/bg_run_pi_attested.md), [tools/bg_status](./tools/bg_status.md)
 
@@ -112,21 +113,21 @@ Generated navigation for every package-local documentation page. This index inte
 
 | Kind | Name | ID | Provenance |
 | --- | --- | --- | --- |
-| command | `bg` | `command:bg` | `src/extension.ts:599` |
-| command | `bg-clear` | `command:bg-clear` | `src/extension.ts:641` |
-| command | `bg-tasks` | `command:bg-tasks` | `src/extension.ts:633` |
-| command | `bg-update` | `command:bg-update` | `src/extension.ts:649` |
+| command | `bg` | `command:bg` | `src/extension.ts:601` |
+| command | `bg-clear` | `command:bg-clear` | `src/extension.ts:643` |
+| command | `bg-tasks` | `command:bg-tasks` | `src/extension.ts:635` |
+| command | `bg-update` | `command:bg-update` | `src/extension.ts:651` |
 | command | `claude-cache` | `command:claude-cache` | `src/core/anthropic-attribution.ts:1928` |
-| command | `jobs` | `command:jobs` | `src/extension.ts:687` |
-| command | `kill` | `command:kill` | `src/extension.ts:731` |
-| command | `logs` | `command:logs` | `src/extension.ts:700` |
-| command | `tasks` | `command:tasks` | `src/extension.ts:625` |
-| tool | `bg_kill` | `tool:bg_kill` | `src/extension.ts:990` |
-| tool | `bg_logs` | `tool:bg_logs` | `src/extension.ts:945` |
-| tool | `bg_run` | `tool:bg_run` | `src/extension.ts:764` |
-| tool | `bg_run_pi_attested` | `tool:bg_run_pi_attested` | `src/extension.ts:849` |
-| tool | `bg_status` | `tool:bg_status` | `src/extension.ts:914` |
-| shortcut | `ctrl+alt+c` | `shortcut:ctrl+alt+c` | `src/extension.ts:679` |
-| shortcut | `shift+down` | `shortcut:shift+down` | `src/extension.ts:672` |
+| command | `jobs` | `command:jobs` | `src/extension.ts:689` |
+| command | `kill` | `command:kill` | `src/extension.ts:733` |
+| command | `logs` | `command:logs` | `src/extension.ts:702` |
+| command | `tasks` | `command:tasks` | `src/extension.ts:627` |
+| tool | `bg_kill` | `tool:bg_kill` | `src/extension.ts:992` |
+| tool | `bg_logs` | `tool:bg_logs` | `src/extension.ts:947` |
+| tool | `bg_run` | `tool:bg_run` | `src/extension.ts:766` |
+| tool | `bg_run_pi_attested` | `tool:bg_run_pi_attested` | `src/extension.ts:851` |
+| tool | `bg_status` | `tool:bg_status` | `src/extension.ts:916` |
+| shortcut | `ctrl+alt+c` | `shortcut:ctrl+alt+c` | `src/extension.ts:681` |
+| shortcut | `shift+down` | `shortcut:shift+down` | `src/extension.ts:674` |
 | renderer | `background-task-notification` | `renderer:background-task-notification` | `src/extension.ts:462` |
 | eventbus | `background-task-v1` | `eventbus:background-task-v1` | `src/core/extension-api.ts` |

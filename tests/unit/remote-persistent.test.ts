@@ -25,7 +25,7 @@ test('remote cache resumes interrupted chunks without duplicates and pins method
     const bytes = Buffer.alloc(70000, 97);
     let interrupt = true;
     const offsets: number[] = [];
-    const record: TaskRecord = { id: 'remote1', cwd: '/remote', name: 'task', command: 'cmd', status: 'completed', startedAt: 1, outputFile: '/DO-NOT-READ', outputBytes: bytes.length };
+    const record: TaskRecord = { ownerSession: 'session-A', id: 'remote1', cwd: '/remote', name: 'task', command: 'cmd', status: 'completed', startedAt: 1, outputFile: '/DO-NOT-READ', outputBytes: bytes.length };
     const provider = { id: 'endpoint', cwd: '/remote', spawn() { throw new Error('no fallback'); }, persistent: {
       async start() { return record; }, async get() { return record; }, async cancel() { return record; }, async list() { return Object.assign([], { diagnostics: [] }); },
       async logs(_id: string, offset: number, count: number) {
@@ -36,7 +36,7 @@ test('remote cache resumes interrupted chunks without duplicates and pins method
         return { data: data.toString('base64'), nextOffset: offset + data.length, size: bytes.length, eof: offset + data.length === bytes.length };
       },
     } };
-    const client = captureRemote(provider, cwd, 100000)!;
+    const client = captureRemote(provider, cwd, 100000, 'session-A')!;
     provider.persistent.get = async () => { throw new Error('retargeted'); };
     await assert.rejects(client.get('remote1'), /disconnect/);
     const result = await client.get('remote1');
@@ -52,13 +52,13 @@ test('registry publishes only cached terminal output and restoration is monitori
   let cancelled = 0;
   let notifications = 0;
   let published = '';
-  const record: TaskRecord = { id: 'remote2', cwd: '/remote', name: 'task', command: 'cmd', status: 'completed', startedAt: 1, outputFile: '/remote/output', outputBytes: 4 };
+  const record: TaskRecord = { ownerSession: 'session-A', id: 'remote2', cwd: '/remote', name: 'task', command: 'cmd', status: 'completed', startedAt: 1, outputFile: '/remote/output', outputBytes: 4 };
   const provider = { id: 'endpoint', cwd: '/remote', spawn() { throw new Error('fallback'); }, persistent: {
     async start() { return record; }, async get() { return record; }, async cancel() { cancelled++; return record; },
-    async list() { return Object.assign([record], { diagnostics: [] }); },
+    async list() { const { ownerSession: _owner, ...legacy } = record; return Object.assign([record, { ...legacy, id: 'legacy' }, { ...record, id: 'foreign', ownerSession: 'session-B' }], { diagnostics: [] }); },
     async logs() { return { data: Buffer.from('done').toString('base64'), nextOffset: 4, size: 4, eof: true }; },
   } };
-  const ctx = { cwd, modelRegistry: { getAll: () => [] } };
+  const ctx = { sessionId: 'session-A', cwd, modelRegistry: { getAll: () => [] } };
   let publicationDone: () => void = () => {};
   const publication = new Promise<void>(resolve => { publicationDone = resolve; });
   const registry = new BackgroundTaskRegistry({ makeTaskId: () => 'remote2', resolveExecution: () => provider,
@@ -72,9 +72,18 @@ test('registry publishes only cached terminal output and restoration is monitori
     assert.equal(notifications, 1);
     registry.setShuttingDown(true);
     await restored.restoreRemoteTasks(ctx);
+    assert.deepEqual(restored.allTasks().map(task => task.id), ['remote2']);
     assert.equal(restored.allTasks()[0]?.status, 'completed');
     assert.equal(notifications, 1);
     assert.equal(cancelled, 0);
+    const isolated = new BackgroundTaskRegistry({ resolveExecution: () => provider, sendCompletionNotification: () => {} });
+    try {
+      await isolated.restoreRemoteTasks({ ...ctx, sessionId: 'session-B' });
+      assert.deepEqual(isolated.allTasks().map(task => task.id), ['foreign']);
+      assert.throws(() => isolated.resolveTask(task.id), /Unknown/);
+      await assert.rejects(isolated.stopTask(task, 'user'), /owner mismatch/);
+      await assert.rejects(restored.restoreRemoteTasks({ ...ctx, sessionId: 'session-B' }), /session mismatch/);
+    } finally { isolated.setShuttingDown(true); }
   } finally {
     registry.setShuttingDown(true); restored.setShuttingDown(true);
     await rm(cwd, { recursive: true, force: true });

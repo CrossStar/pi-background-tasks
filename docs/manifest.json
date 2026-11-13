@@ -57,7 +57,7 @@
       "state": "stale-authored-prose"
     },
     {
-      "authored_body_sha256": "sha256:11b2201f54b2e24180dd7dcc294a4158514e1f3b048a7b3bdbc1f22423ea9532",
+      "authored_body_sha256": "sha256:06fbd18efbf8b388e27fcb8b36fb4884f33b6b7db891a0e5e84c32117545df4d",
       "covers_sources": [
         "src/core/common.ts",
         "src/core/registry.ts",
@@ -97,7 +97,7 @@
       "state": "stale-authored-prose"
     },
     {
-      "authored_body_sha256": "sha256:8c92875dd1a782ec663270f10c454037a9a80ba54afa33d5b8b52c31a492c47e",
+      "authored_body_sha256": "sha256:767e148cf3e190e20cf9c5588dcf991c71e7fc9ad0915d89122e69801306a547",
       "covers_sources": [
         "src/persistent/client.ts",
         "src/persistent/daemon.mjs",
@@ -387,6 +387,15 @@
       "rel": "docs/reference/shortcuts-and-dock.md",
       "review_policy": "contract",
       "stability": "stable"
+    },
+    "session-ownership": {
+      "audience": "maintainer",
+      "covers_sources": [],
+      "covers_surfaces": [],
+      "mode": "authored",
+      "rel": "docs/session-ownership.md",
+      "review_policy": "contract",
+      "stability": "evolving"
     },
     "subsystems/anthropic-attribution": {
       "audience": "maintainer",
@@ -706,28 +715,28 @@
         "id": "command:bg",
         "kind": "command",
         "name": "bg",
-        "source": "src/extension.ts:599"
+        "source": "src/extension.ts:601"
       },
       {
         "description": "Clear finished background task footer notices",
         "id": "command:bg-clear",
         "kind": "command",
         "name": "bg-clear",
-        "source": "src/extension.ts:641"
+        "source": "src/extension.ts:643"
       },
       {
         "description": "Open the background task manager UI",
         "id": "command:bg-tasks",
         "kind": "command",
         "name": "bg-tasks",
-        "source": "src/extension.ts:633"
+        "source": "src/extension.ts:635"
       },
       {
         "description": "Show how to update pi-background-tasks to the latest published version",
         "id": "command:bg-update",
         "kind": "command",
         "name": "bg-update",
-        "source": "src/extension.ts:649"
+        "source": "src/extension.ts:651"
       },
       {
         "description": "Show or set Claude cache retention for this session (short, long, default)",
@@ -741,28 +750,28 @@
         "id": "command:jobs",
         "kind": "command",
         "name": "jobs",
-        "source": "src/extension.ts:687"
+        "source": "src/extension.ts:689"
       },
       {
         "description": "Stop a running background task: /kill <id>",
         "id": "command:kill",
         "kind": "command",
         "name": "kill",
-        "source": "src/extension.ts:731"
+        "source": "src/extension.ts:733"
       },
       {
         "description": "Show bounded output from a background task: /logs <id> [maxBytes]",
         "id": "command:logs",
         "kind": "command",
         "name": "logs",
-        "source": "src/extension.ts:700"
+        "source": "src/extension.ts:702"
       },
       {
         "description": "Open the Claude-like background task manager UI",
         "id": "command:tasks",
         "kind": "command",
         "name": "tasks",
-        "source": "src/extension.ts:625"
+        "source": "src/extension.ts:627"
       }
     ],
     "eventbus": [
@@ -799,14 +808,14 @@
         "id": "shortcut:ctrl+alt+c",
         "kind": "shortcut",
         "name": "ctrl+alt+c",
-        "source": "src/extension.ts:679"
+        "source": "src/extension.ts:681"
       },
       {
         "description": "Open focused background task footer dock",
         "id": "shortcut:shift+down",
         "kind": "shortcut",
         "name": "shift+down",
-        "source": "src/extension.ts:672"
+        "source": "src/extension.ts:674"
       }
     ],
     "tool": [
@@ -832,7 +841,7 @@
           ],
           "type": "object"
         },
-        "source": "src/extension.ts:990"
+        "source": "src/extension.ts:992"
       },
       {
         "description": "Read bounded output from a background task for deliberate inspection; this is not a waiting primitive. Output is capped at 50.0KB for model safety and points to the full output file when truncated.",
@@ -866,7 +875,7 @@
           ],
           "type": "object"
         },
-        "source": "src/extension.ts:945"
+        "source": "src/extension.ts:947"
       },
       {
         "description": "Start a named long-running shell command in the background and return immediately with a task ID and output path. By default, completed, failed, or killed terminal state is delivered automatically as <background-task-notification> and starts a follow-up agent turn; do not sleep or poll merely to wait. Output is written to .pi/tasks and model-visible logs are bounded to 50.0KB.",
@@ -923,7 +932,7 @@
           ],
           "type": "object"
         },
-        "source": "src/extension.ts:764"
+        "source": "src/extension.ts:766"
       },
       {
         "description": "Opt-in evidence-oriented direct Pi spawn. Launches exactly one `pi --mode json` child, records raw Pi events/stderr, hashes prompt/report/output, observes OAuth through ModelRegistry, and emits a strict attestation sidecar only after successful completion.",
@@ -984,7 +993,7 @@
           ],
           "type": "object"
         },
-        "source": "src/extension.ts:849"
+        "source": "src/extension.ts:851"
       },
       {
         "description": "Inspect one background task or list all running/recent background tasks. This is a point-in-time inspection tool, not a waiting primitive.",
@@ -1008,7 +1017,7 @@
           "required": [],
           "type": "object"
         },
-        "source": "src/extension.ts:914"
+        "source": "src/extension.ts:916"
       }
     ],
     "workflow": []

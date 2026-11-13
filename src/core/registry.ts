@@ -725,10 +725,15 @@ export function acquireProcessRegistry(
   ctx: Pick<BackgroundTaskContext, 'cwd' | 'sessionId'>,
   candidate: BackgroundTaskRegistry,
 ): BackgroundTaskRegistry {
+  candidate.bindSession(ctx);
+  if (!ctx.sessionId?.trim()) return candidate;
   const store = processRegistryStore();
   const key = processRegistryKey(ctx);
   const existing = store.registries.get(key);
-  if (existing !== undefined) return existing;
+  if (existing !== undefined) {
+    existing.bindSession(ctx);
+    return existing;
+  }
   store.registries.set(key, candidate);
   return candidate;
 }
@@ -747,6 +752,17 @@ export class BackgroundTaskRegistry {
   private readonly durableClient: ReturnType<typeof durable.createClient>;
   private readonly durableEnabled: boolean;
   private readonly restoredDurable = new WeakSet<BgTask>();
+  private readonly anonymousOwner = `private-${randomBytes(24).toString('hex')}`;
+  private ownerSession: string | undefined;
+  matchesSession(ctx: Pick<BackgroundTaskContext, 'sessionId'>): boolean {
+    return this.ownerSession === undefined || this.ownerSession === (ctx.sessionId?.trim() || this.anonymousOwner);
+  }
+  bindSession(ctx: Pick<BackgroundTaskContext, 'sessionId'>): string {
+    const owner = ctx.sessionId?.trim() || this.anonymousOwner;
+    if (this.ownerSession !== undefined && this.ownerSession !== owner) throw new Error('Background registry session mismatch');
+    this.ownerSession = owner;
+    return owner;
+  }
   private readonly durableTasks = new WeakSet<BgTask>();
   private durablePollGeneration = 0;
   private durablePoll: ReturnType<typeof setTimeout> | undefined;
@@ -802,6 +818,10 @@ export class BackgroundTaskRegistry {
     this.onChange = options.onChange ?? noopOnChange;
     this.sendCompletionNotification = options.sendCompletionNotification;
     this.publishTerminalSnapshot = options.publishTerminal ?? noopOnChange;
+  }
+
+  setExecutionResolver(resolveExecution: BackgroundExecutionResolver): void {
+    this.resolveExecution = resolveExecution;
   }
 
   isShuttingDown(): boolean {
@@ -865,8 +885,9 @@ export class BackgroundTaskRegistry {
   }
 
   async ensureRuntimeDir(ctx: BackgroundTaskContext): Promise<RuntimeDir> {
+    this.bindSession(ctx);
     if (this.runtimeDir) return this.runtimeDir;
-    const sessionId = sanitizePathSegment(ctx.sessionId ?? `session-${String(process.pid)}`);
+    const sessionId = sanitizePathSegment(this.bindSession(ctx));
     const runId = `${sessionId}-${String(process.pid)}`;
     const runtimeDirAbs = join(ctx.cwd, '.pi', 'tasks', runId);
     const runtimeDirDisplay = join('.pi', 'tasks', runId);
@@ -890,13 +911,14 @@ export class BackgroundTaskRegistry {
 
   private async restoreRemoteTasksOnce(ctx: BackgroundTaskContext): Promise<void> {
     const provider = this.resolveExecution?.();
-    const remote = provider ? captureRemote(provider, ctx.cwd, this.maxOutputBytes) : undefined;
+    const remote = provider ? captureRemote(provider, ctx.cwd, this.maxOutputBytes, this.bindSession(ctx)) : undefined;
     if (!remote) return;
     const generation = this.durablePollGeneration;
     const valid = () => generation === this.durablePollGeneration && !this.shuttingDown && this.resolveExecution?.()?.id === remote.id && this.resolveExecution?.()?.cwd === remote.cwd;
-    const records = await remote.api.list(remote.cwd);
+    const records = await remote.api.list(remote.cwd, this.bindSession(ctx));
     if (!valid()) return;
     for (const record of records) {
+      if (record.ownerSession !== this.ownerSession) continue;
       if (!/^[\w-]{1,100}$/.test(record.id) || record.cwd !== remote.cwd) throw new Error('Invalid remote discovery record');
       const existing = this.tasks.get(record.id);
       if (existing) {
@@ -904,7 +926,7 @@ export class BackgroundTaskRegistry {
           throw new Error(`Remote task ID collision: ${record.id}`);
         continue;
       }
-      const task: BgTask = { id: record.id, name: record.name, command: record.command,
+      const task: BgTask = { ownerSession: record.ownerSession, id: record.id, name: record.name, command: record.command,
         cwd: remote.cwd, status: 'running', outputPath: join(remote.root, `${record.id}.output`), outputAbsPath: join(remote.root, `${record.id}.output`), metadataAbsPath: join(remote.root, `${record.id}.output.json`),
         startTime: record.startedAt, bytesWritten: 0, isAgent: false, notified: false,
         notifyOnCompletion: false, triggerOnCompletion: false, waiters: [], lifetime: 'persistent',
@@ -925,14 +947,16 @@ export class BackgroundTaskRegistry {
   }
 
   async restoreDurableTasks(ctx: BackgroundTaskContext): Promise<void> {
+    const owner = this.bindSession(ctx);
     if (!this.durableEnabled) return;
-    const records = await this.durableClient.list(ctx.cwd);
+    const records = await this.durableClient.list(ctx.cwd, owner);
     for (const diagnostic of records.diagnostics ?? []) {
       this.logger.error(`Persistent task ${diagnostic.id}: ${diagnostic.message}`);
     }
     for (const record of records) {
-      if (this.tasks.has(record.id)) continue;
+      if (record.ownerSession !== owner || this.tasks.has(record.id)) continue;
       const task: BgTask = {
+        ownerSession: owner,
         id: record.id,
         name: record.name,
         command: record.command,
@@ -960,6 +984,8 @@ export class BackgroundTaskRegistry {
   }
 
   private applyDurableRecord(task: BgTask, record: durable.TaskRecord): void {
+    if (record.ownerSession !== this.ownerSession || task.ownerSession !== this.ownerSession) throw new Error('Persistent task owner mismatch');
+    this.durableRefreshFailures.delete(task);
     if (task.status !== 'running') return;
     task.lifetime = 'persistent';
     if (task.execution?.kind !== 'external') task.execution = { kind: 'local', id: 'local', cwd: record.cwd };
@@ -999,6 +1025,7 @@ export class BackgroundTaskRegistry {
     this.onChange();
   }
 
+  private readonly durableRefreshFailures = new WeakMap<BgTask, { attempts: number; nextRetry: number; message: string }>();
   private durablePollCursor = 0;
   private readonly durableRefreshing = new Set<BgTask>();
   private scheduleDurablePoll(): void {
@@ -1013,13 +1040,26 @@ export class BackgroundTaskRegistry {
         this.durablePollCursor++;
         if (task === undefined) continue;
         if (this.durableRefreshing.has(task)) continue;
+        if ((this.durableRefreshFailures.get(task)?.nextRetry ?? 0) > this.now()) continue;
         this.durableRefreshing.add(task);
-        void (this.taskClients.get(task) ?? this.durableClient).get(task.id).then(record => {
+        void (this.taskClients.get(task) ?? this.durableClient).get(task.id, task.ownerSession).then(record => {
           if (generation === this.durablePollGeneration) this.applyDurableRecord(task, record);
         }).catch(error => {
-          task.error = `Persistent task unavailable: ${String(error)}`;
-          this.onChange();
-          this.logger.error(`Durable task refresh failed: ${task.id}`, error);
+          if (generation !== this.durablePollGeneration) return;
+          const previous = this.durableRefreshFailures.get(task);
+          const attempts = Math.min((previous?.attempts ?? 0) + 1, 5);
+          const diagnostic = BackgroundTaskRegistry.errorMessage(error).slice(0, 12288) || 'Unknown error';
+          const message = diagnostic.split(/[\r\n]/u, 1)[0]?.slice(0, 300) || 'Unknown error';
+          this.durableRefreshFailures.set(task, {
+            attempts,
+            nextRetry: this.now() + Math.min(2000 * 2 ** (attempts - 1), 30000),
+            message: diagnostic,
+          });
+          if (previous?.message !== diagnostic) {
+            task.error = `Persistent task unavailable: ${diagnostic}`;
+            this.onChange();
+            this.logger.error(`Durable task refresh failed: ${task.id.slice(0, 80)}: ${message}`);
+          }
         }).finally(() => {
           this.durableRefreshing.delete(task);
         });
@@ -1076,6 +1116,7 @@ export class BackgroundTaskRegistry {
     command: string,
     options: StartTaskOptions = {},
   ): Promise<BgTask> {
+    const ownerSession = this.bindSession(ctx);
     const normalizedCommand = command.trim();
     if (!normalizedCommand) throw new Error('Background command is empty');
     if (this.shuttingDown)
@@ -1094,7 +1135,7 @@ export class BackgroundTaskRegistry {
       : { kind: 'local' as const, id: 'local', cwd: admittedCwd };
     const isAgent = options.isAgent ?? false;
     if (execution && isAgent) throw new Error('External bg_run requires isAgent:false');
-    const remote = execution ? captureRemote(execution, admittedCwd, this.maxOutputBytes) : undefined;
+    const remote = execution ? captureRemote(execution, admittedCwd, this.maxOutputBytes, ownerSession) : undefined;
     const externalSpawn = execution?.spawn.bind(execution);
     const baseInvocation = execution
       ? { shell: '', args: [], dialect: 'posix' as const, windowsVerbatimArguments: false }
@@ -1126,6 +1167,7 @@ export class BackgroundTaskRegistry {
 
     const task: BgTask = {
       id,
+      ownerSession,
       name: taskName,
       command: normalizedCommand,
       description,
@@ -1163,7 +1205,7 @@ export class BackgroundTaskRegistry {
       try {
         const record = await remote.api.start({ id, cwd: remote.cwd, name: taskName,
           command: normalizedCommand, description, timeoutSeconds: timeoutSeconds ?? 0,
-          maxOutputBytes: this.maxOutputBytes, ownerSession: ctx.sessionId ?? '',
+          maxOutputBytes: this.maxOutputBytes, ownerSession,
           notifyOnCompletion: task.notifyOnCompletion, triggerOnCompletion: task.triggerOnCompletion });
         if (record.id !== id) throw new Error('Remote task ID mismatch');
         this.applyDurableRecord(task, await remote.adapt(record));
@@ -1198,7 +1240,7 @@ export class BackgroundTaskRegistry {
           env: taskEnvironment,
           timeoutSeconds: timeoutSeconds ?? 0,
           maxOutputBytes: this.maxOutputBytes,
-          ownerSession: ctx.sessionId ?? '',
+          ownerSession,
           notifyOnCompletion: task.notifyOnCompletion,
           triggerOnCompletion: task.triggerOnCompletion,
         });
@@ -1209,7 +1251,7 @@ export class BackgroundTaskRegistry {
           throw error;
         }
         try {
-          this.applyDurableRecord(task, await this.durableClient.get(id));
+          this.applyDurableRecord(task, await this.durableClient.get(id, ownerSession));
         } catch {
           task.error = `Admission uncertain for task ${id}: ${error instanceof Error ? error.message : String(error)}. Inspect this task ID; do not retry the command.`;
           this.onChange();
@@ -1365,6 +1407,7 @@ export class BackgroundTaskRegistry {
     ctx: BackgroundTaskContext,
     request: StartManagedTaskOptions,
   ): Promise<BgTask> {
+    this.bindSession(ctx);
     if (this.resolveExecution?.() !== undefined) throw new Error('Managed tasks require local execution');
     if (this.shuttingDown)
       throw new Error('Cannot start a managed background task while Pi is shutting down');
@@ -1379,6 +1422,7 @@ export class BackgroundTaskRegistry {
     const outputPath = join(dir.display, `${request.id}.output`);
     const task: BgTask = {
       id: request.id,
+      ownerSession: this.ownerSession,
       name: normalizeTaskName(request.name) ?? 'Managed background task',
       command: request.command,
       description: request.description,
@@ -1465,6 +1509,7 @@ export class BackgroundTaskRegistry {
     ctx: BackgroundTaskContext,
     request: StartAttestedPiTaskOptions,
   ): Promise<BgTask> {
+    this.bindSession(ctx);
     if (this.resolveExecution?.() !== undefined) throw new Error('Attested Pi tasks require local execution');
     if (this.shuttingDown)
       throw new Error('Cannot start an attested Pi task while Pi is shutting down');
@@ -1502,6 +1547,7 @@ export class BackgroundTaskRegistry {
 
     const task: BgTask = {
       id,
+      ownerSession: this.ownerSession,
       name: normalizeTaskName(request.name) ?? 'Attested Pi task',
       command: argv.map(shellQuote).join(' '),
       status: 'running',
@@ -1765,8 +1811,8 @@ export class BackgroundTaskRegistry {
     const id = idOrPrefix.trim();
     if (!id) throw new Error('Task ID is required');
     const exact = this.tasks.get(id);
-    if (exact) return exact;
-    const matches = [...this.tasks.values()].filter((task) => task.id.startsWith(id));
+    if (exact && (exact.ownerSession === undefined || exact.ownerSession === this.ownerSession)) return exact;
+    const matches = [...this.tasks.values()].filter((task) => task.id.startsWith(id) && (task.ownerSession === undefined || task.ownerSession === this.ownerSession));
     const onlyMatch = matches[0];
     if (matches.length === 1 && onlyMatch) return onlyMatch;
     if (matches.length > 1)
@@ -1777,16 +1823,17 @@ export class BackgroundTaskRegistry {
   }
 
   async stopTask(task: BgTask, kind: KillKind, reason?: string): Promise<BgTask> {
+    if (this.tasks.get(task.id) !== task || (task.ownerSession !== undefined && task.ownerSession !== this.ownerSession)) throw new Error('Background task owner mismatch');
     if (task.status !== 'running') {
       throw new Error(`Task ${task.id} is ${task.status}, not running`);
     }
     if (this.durableTasks.has(task)) {
       if (kind === 'shutdown') return task;
-      let record = await (this.taskClients.get(task) ?? this.durableClient).cancel(task.id);
+      let record = await (this.taskClients.get(task) ?? this.durableClient).cancel(task.id, task.ownerSession);
       const deadline = Date.now() + 10000;
       while (record.status === 'running' && Date.now() < deadline) {
         await new Promise<void>(resolve => setTimeout(resolve, 100));
-        record = await (this.taskClients.get(task) ?? this.durableClient).get(task.id);
+        record = await (this.taskClients.get(task) ?? this.durableClient).get(task.id, task.ownerSession);
       }
       this.applyDurableRecord(task, record);
       if (record.status !== 'killed')

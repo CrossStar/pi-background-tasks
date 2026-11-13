@@ -20,7 +20,14 @@ test('local command survives registry shutdown and restores without delivery', a
   first.detachHost();
   const second = new BackgroundTaskRegistry(options);
   try {
-    await second.restoreDurableTasks({ ...ctx, sessionId: 'second' });
+    const foreign = new BackgroundTaskRegistry(options);
+    try {
+      await foreign.restoreDurableTasks({ ...ctx, sessionId: 'second' });
+      assert.deepEqual(foreign.allTasks(), []);
+      assert.throws(() => foreign.resolveTask(task.id), /Unknown/);
+      await assert.rejects(foreign.stopTask(task, 'user'), /owner mismatch/);
+    } finally { foreign.setShuttingDown(true); foreign.detachHost(); }
+    await second.restoreDurableTasks(ctx);
     const restored = second.resolveTask(task.id);
     assert.equal(restored.outputAbsPath, task.outputAbsPath);
     const deadline = Date.now() + 10000;

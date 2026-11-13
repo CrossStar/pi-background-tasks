@@ -23,12 +23,18 @@ async function get(id) {
     }
     throw Error('SUPERVISOR_UNREACHABLE: preserve last running snapshot');
 }
+function checkOwner(record, owner) {
+    if (owner !== undefined && record.ownerSession !== owner) throw Error('Session ownership mismatch');
+}
 const daemonIdentity = crypto.randomUUID();
 const service = server(async (method, p) => {
+    if (p.ownerSession !== undefined && (typeof p.ownerSession !== 'string' || !p.ownerSession.length)) throw Error('Invalid ownerSession');
     if (method === 'ping')
-        return { pid: process.pid, startToken: daemonIdentity, protocolVersion: 1 };
-    if (method === 'get')
+        return { pid: process.pid, startToken: daemonIdentity, protocolVersion: 1, sessionOwnership: 1 };
+    if (method === 'get') {
+        checkOwner(load(p.id), p.ownerSession);
         return get(p.id);
+    }
     if (method === 'list') {
         const ids = fs.readdirSync(path.join(root, 'tasks')).sort();
         const offset = Number.isSafeInteger(p.offset) && p.offset >= 0 ? p.offset : 0;
@@ -36,6 +42,7 @@ const service = server(async (method, p) => {
         for (const id of ids.slice(offset, offset + 50)) {
             try {
                 const value = load(id);
+                if (p.ownerSession !== undefined && value?.ownerSession !== p.ownerSession) continue;
                 if (!value || value.id !== id || typeof value.cwd !== 'string' ||
                     typeof value.name !== 'string' || typeof value.command !== 'string' ||
                     !['running','completed','failed','killed'].includes(value.status) ||
@@ -49,12 +56,13 @@ const service = server(async (method, p) => {
                 if (!p.cwd || value.cwd === p.cwd) records.push(value.status === 'running'
                     ? {...value,diagnostic:'unverified: stored running admission; supervisor reachability has not been verified'} : value);
             } catch (error) {
-                diagnostics.push({id,message:'unreadable admission: '+String(error.message).slice(0,512)});
+                diagnostics.push(p.ownerSession !== undefined ? {id:'unknown',message:'unreadable admission'} : {id,message:'unreadable admission: '+String(error.message).slice(0,512)});
             }
         }
         return {records,diagnostics,nextOffset:offset+50<ids.length?offset+50:null};
     }
     if (method === 'cancel') {
+        checkOwner(load(p.id), p.ownerSession);
         const r = await get(p.id);
         if (r.status !== 'running')
             return r;
@@ -73,8 +81,10 @@ const service = server(async (method, p) => {
         const { env: ignoredEnvironment, ...metadata } = p;
         if (Buffer.byteLength(JSON.stringify(metadata)) > 12000)
             throw Error('Task metadata exceeds 12000 byte limit');
-        if (fs.existsSync(target))
+        if (fs.existsSync(target)) {
+            if (load(p.id).ownerSession !== p.ownerSession) throw Error('Session ownership mismatch');
             return get(p.id);
+        }
         if ((p.windowsVerbatimArguments !== undefined && typeof p.windowsVerbatimArguments !== 'boolean') || typeof p.command !== 'string' || typeof p.name !== 'string' || !path.isAbsolute(p.cwd) || typeof p.shell !== 'string' || !Array.isArray(p.args) || !p.args.every(x => typeof x === 'string') || !p.env || typeof p.env !== 'object' || !Object.values(p.env).every(x => typeof x === 'string') || !Number.isSafeInteger(p.maxOutputBytes) || p.maxOutputBytes < 1 || !Number.isFinite(p.timeoutSeconds) || p.timeoutSeconds < 0)
             throw Error('Invalid start request');
         const dir = path.dirname(target);

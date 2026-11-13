@@ -18,14 +18,14 @@ This generated registry lists production environment-variable references, runtim
 | --- | --- | --- |
 | `ANTHROPIC_API_KEY` | remove | `src/core/attested-pi-run.ts:135` |
 | `ANTHROPIC_BASE_URL` | remove | `src/core/attested-pi-run.ts:135` |
-| `ComSpec` | read | `src/core/common.ts:665`<br>`src/core/common.ts:676` |
+| `ComSpec` | read | `src/core/common.ts:666`<br>`src/core/common.ts:677` |
 | `OPENAI_API_KEY` | remove | `src/core/attested-pi-run.ts:135` |
 | `OPENAI_BASE_URL` | remove | `src/core/attested-pi-run.ts:135` |
 | `OPENROUTER_API_KEY` | remove | `src/core/attested-pi-run.ts:135` |
 | `OPENROUTER_BASE_URL` | remove | `src/core/attested-pi-run.ts:135` |
-| `path` | read | `src/core/common.ts:620` |
-| `Path` | read | `src/core/common.ts:620` |
-| `PATH` | read | `src/core/common.ts:620` |
+| `path` | read | `src/core/common.ts:621` |
+| `Path` | read | `src/core/common.ts:621` |
+| `PATH` | read | `src/core/common.ts:621` |
 | `PI_API_BASE_URL` | remove | `src/core/attested-pi-run.ts:135` |
 | `PI_API_KEY` | remove | `src/core/attested-pi-run.ts:135` |
 | `PI_AUTH_FILE` | remove | `src/core/attested-pi-run.ts:135` |
@@ -33,12 +33,12 @@ This generated registry lists production environment-variable references, runtim
 | `PI_BG_DISABLE_UPDATE_CHECK` | read | `src/extension.ts:491` |
 | `PI_BG_MAX_OUTPUT_BYTES` | read | `src/core/registry.ts:70` |
 | `PI_BG_REGISTRY_URL` | read | `src/extension.ts:500` |
-| `PI_BG_SHELL` | read | `src/core/common.ts:661` |
-| `PI_BG_SHELL_PATH` | read | `src/core/common.ts:662` |
+| `PI_BG_SHELL` | read | `src/core/common.ts:662` |
+| `PI_BG_SHELL_PATH` | read | `src/core/common.ts:663` |
 | `PI_CACHE_RETENTION` | read | `src/core/anthropic-attribution.ts:587` |
 | `PI_OFFLINE` | read | `src/extension.ts:492` |
 | `PIPELINE_ANTHROPIC_ATTRIBUTION_AUDIT_PATH` | read | `src/core/anthropic-attribution.ts:1013` |
-| `SHELL` | read | `src/core/common.ts:657` |
+| `SHELL` | read | `src/core/common.ts:658` |
 | `SystemRoot` | read | `src/core/windows-taskkill.ts:96` |
 | `WINDIR` | read | `src/core/windows-taskkill.ts:101` |
 
@@ -46,10 +46,10 @@ This generated registry lists production environment-variable references, runtim
 
 | Kind | Path/artifact | Provenance |
 | --- | --- | --- |
-| directory | `.pi/tasks/<session-id>-<pid>/` | `src/core/registry.ts:871` |
+| directory | `.pi/tasks/<session-id>-<pid>/` | `src/core/registry.ts:892` |
 | task-file | `.pi/tasks/<session-id>-<pid>/<task-id>.attestation.json` | `src/core/attested-pi-run.ts:592` |
-| task-file | `.pi/tasks/<session-id>-<pid>/<task-id>.json` | `src/core/registry.ts:1050` |
-| task-file | `.pi/tasks/<session-id>-<pid>/<task-id>.output` | `src/core/registry.ts:1110` |
+| task-file | `.pi/tasks/<session-id>-<pid>/<task-id>.json` | `src/core/registry.ts:1090` |
+| task-file | `.pi/tasks/<session-id>-<pid>/<task-id>.output` | `src/core/registry.ts:1151` |
 | task-file | `.pi/tasks/<session-id>-<pid>/<task-id>.pi-events.jsonl` | `src/core/attested-pi-run.ts:589` |
 | task-file | `.pi/tasks/<session-id>-<pid>/<task-id>.pi-telemetry-wrapper.cjs` | `src/core/attested-pi-run.ts:591` |
 | task-file | `.pi/tasks/<session-id>-<pid>/<task-id>.stderr` | `src/core/attested-pi-run.ts:590` |

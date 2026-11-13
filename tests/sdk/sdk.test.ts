@@ -74,6 +74,7 @@ function resolvePiCli(): string | undefined {
 
 interface SdkHarnessOptions {
   cwd?: string;
+  sessionManager?: SessionManager;
   eventBus?: EventBus | undefined;
 }
 
@@ -107,7 +108,7 @@ async function harness(options: SdkHarnessOptions = {}) {
     cwd,
     agentDir,
     resourceLoader: loader,
-    sessionManager: SessionManager.inMemory(cwd),
+    sessionManager: options.sessionManager ?? SessionManager.inMemory(cwd),
     settingsManager,
     modelRuntime,
     noTools: 'builtin',
@@ -788,6 +789,7 @@ void describe('sdk', () => {
       });
       const task = requiredTask(requireOkResult(run), 'run result task');
       assert.equal(task.name, 'EventBus Echo');
+      assert.equal(task.ownerSession, session.sessionManager.getSessionId());
       assert.ok(
         task.status === 'running' || task.status === 'completed',
         `immediate run response status should be a valid launch snapshot, got ${task.status}`,
@@ -1633,10 +1635,15 @@ console.log(JSON.stringify({ type: "message_end", message: secondMessage }));
         notifyOnCompletion: true, triggerOnCompletion: true,
       }));
       await session.extensionRunner.emit({ type: 'session_shutdown', reason: 'quit' });
-      await session.extensionRunner.emit({ type: 'session_start', reason: 'new' });
-      const done = await wait(session, task.id);
-      assert.equal(done.status, 'completed');
-      assert.equal(done.notified, false);
+      const manager = session.sessionManager;
+      const originalId = manager.getSessionId();
+      for (const reason of ['new', 'fork'] as const) {
+        manager.newSession();
+        assert.notEqual(manager.getSessionId(), originalId);
+        await session.extensionRunner.emit({ type: 'session_start', reason });
+        await assert.rejects(() => exec(session, 'bg_status', { taskId: task.id }), /Unknown/);
+        await assert.rejects(() => exec(session, 'bg_kill', { taskId: task.id }), /Unknown/);
+      }
       assert.equal(customNotifications(session).length, 0);
     } finally {
       await session.extensionRunner.emit({ type: 'session_shutdown', reason: 'quit' });
@@ -1657,13 +1664,29 @@ console.log(JSON.stringify({ type: "message_end", message: secondMessage }));
       command: `node -e ${JSON.stringify("setTimeout(() => process.stdout.write('offline-done'), 1000)")}`,
       notifyOnCompletion: true, triggerOnCompletion: false,
     }));
+    const foreign = await harness({ cwd: first.cwd });
+    await foreign.session.bindExtensions({});
+    try {
+      const foreignTask = taskFromResult(await exec(foreign.session, 'bg_run', {
+        isAgent: false, name: 'Other session task', command: `node -e ${JSON.stringify('setTimeout(() => {}, 30000)')}`, notifyOnCompletion: false,
+      }));
+      await assert.rejects(() => exec(first.session, 'bg_status', { taskId: foreignTask.id }), /Unknown/);
+      await assert.rejects(() => exec(first.session, 'bg_kill', { taskId: foreignTask.id }), /Unknown/);
+      await exec(foreign.session, 'bg_kill', { taskId: foreignTask.id });
+      await assert.rejects(() => exec(foreign.session, 'bg_status', { taskId: running.id }), /Unknown/);
+      await assert.rejects(() => exec(foreign.session, 'bg_kill', { taskId: running.id }), /Unknown/);
+      await assert.rejects(() => exec(foreign.session, 'bg_logs', { taskId: running.id }), /Unknown/);
+    } finally {
+      await foreign.session.extensionRunner.emit({ type: 'session_shutdown', reason: 'quit' });
+      foreign.session.dispose();
+    }
     await first.session.extensionRunner.emit({ type: 'session_shutdown', reason: 'quit' });
     first.session.dispose();
     await new Promise(resolve => setTimeout(resolve, 1500));
     const eventBus = createEventBus();
     const terminals: unknown[] = [];
     const unsubscribe = eventBus.on(BG_TERMINAL_CHANNEL, event => { terminals.push(event); });
-    const second = await harness({ cwd: first.cwd, eventBus });
+    const second = await harness({ cwd: first.cwd, eventBus, sessionManager: first.session.sessionManager });
     try {
       await second.session.bindExtensions({});
       const restored = firstTask(await exec(second.session, 'bg_status', { taskId: running.id }));

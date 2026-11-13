@@ -278,7 +278,7 @@ export default function backgroundTasksExtension(pi: ExtensionAPI): void {
   eventService = installBackgroundTaskExtensionApi({
     events: pi.events,
     registry,
-    getContext: () => currentCtx,
+    getContext: () => currentCtx ? backgroundTaskContext(currentCtx) : undefined,
     isShuttingDown: () => registry.isShuttingDown(),
   });
 
@@ -509,10 +509,12 @@ export default function backgroundTasksExtension(pi: ExtensionAPI): void {
   pi.on('session_start', async (_event, ctx) => {
     installExecutionHook();
     const taskCtx = backgroundTaskContext(ctx);
-    if (registry.isShuttingDown()) {
+    if (registry.isShuttingDown() || !registry.matchesSession(taskCtx)) {
+      registry.detachHost();
       registry = new BackgroundTaskRegistry({ resolveExecution, sendCompletionNotification: (message, options) => pi.sendMessage(message, options) });
     }
     registry = acquireProcessRegistry(taskCtx, registry);
+    registry.setExecutionResolver(resolveExecution);
     registry.setShuttingDown(false);
     currentCtx = ctx;
     await registry.ensureRuntimeDir(taskCtx);
@@ -529,7 +531,7 @@ export default function backgroundTasksExtension(pi: ExtensionAPI): void {
     eventService = installBackgroundTaskExtensionApi({
       events: pi.events,
       registry,
-      getContext: () => currentCtx,
+      getContext: () => currentCtx ? backgroundTaskContext(currentCtx) : undefined,
       isShuttingDown: () => registry.isShuttingDown(),
     });
     registry.rebindHost({

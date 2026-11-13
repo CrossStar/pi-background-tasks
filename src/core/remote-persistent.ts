@@ -6,7 +6,7 @@ import type { BackgroundExecutionProvider, PersistentRemoteExecution } from './e
 import type { TaskRecord } from '../persistent/client.ts';
 
 /** Capture every method before the first asynchronous admission operation. */
-export function captureRemote(provider: BackgroundExecutionProvider, localCwd: string, cap: number) {
+export function captureRemote(provider: BackgroundExecutionProvider, localCwd: string, cap: number, ownerSession: string) {
   if (!provider.persistent) return undefined;
   const id = provider.id;
   const cwd = provider.cwd;
@@ -19,9 +19,10 @@ export function captureRemote(provider: BackgroundExecutionProvider, localCwd: s
     start: source.start.bind(source), get: source.get.bind(source),
     list: source.list.bind(source), cancel: source.cancel.bind(source), logs: source.logs.bind(source),
   };
-  const root = join(localCwd, '.pi', 'tasks', 'remote', createHash('sha256').update(JSON.stringify([id, cwd])).digest('hex'));
+  const root = join(localCwd, '.pi', 'tasks', 'remote', createHash('sha256').update(JSON.stringify([id, cwd, ownerSession])).digest('hex'));
   const pending = new Map<string, Promise<TaskRecord>>();
   async function sync(record: TaskRecord): Promise<TaskRecord> {
+    if (record.ownerSession !== ownerSession) throw new Error('Remote task owner mismatch');
     const outputBytes = record.outputBytes;
     if (!/^[\w-]{1,100}$/.test(record.id) || record.cwd !== cwd ||
         !['running', 'completed', 'failed', 'killed'].includes(record.status) ||
@@ -50,7 +51,7 @@ export function captureRemote(provider: BackgroundExecutionProvider, localCwd: s
     await file.chmod(0o600);
     while (offset < target) {
       const count = Math.min(49152, target - offset);
-      const chunk = await api.logs(record.id, offset, count);
+      const chunk = await api.logs(record.id, offset, count, ownerSession);
       const bytes = Buffer.from(chunk.data, 'base64');
       if (bytes.toString('base64') !== chunk.data || !bytes.length || bytes.length > count ||
           chunk.nextOffset !== offset + bytes.length || !Number.isSafeInteger(chunk.size) ||
@@ -70,9 +71,9 @@ export function captureRemote(provider: BackgroundExecutionProvider, localCwd: s
     return next;
   }
   async function query(taskId: string, cancel = false) {
-    const record = await (cancel ? api.cancel(taskId) : api.get(taskId));
+    const record = await (cancel ? api.cancel(taskId, ownerSession) : api.get(taskId, ownerSession));
     if (record.id !== taskId) throw new Error('Remote task ID mismatch');
     return adapt(record);
   }
-  return { id, cwd, root, api, adapt, get: (taskId: string) => query(taskId), cancel: (taskId: string) => query(taskId, true) };
+  return { id, cwd, root, api, adapt, get: (taskId: string, _ownerSession?: string) => query(taskId), cancel: (taskId: string, _ownerSession?: string) => query(taskId, true) };
 }

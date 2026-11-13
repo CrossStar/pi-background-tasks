@@ -25,10 +25,10 @@ export interface PersistentRemoteLogs {
 /** These methods operate on a captured remote route; no local command fallback. */
 export interface PersistentRemoteExecution {
   start(request: PersistentRemoteStart): Promise<import('../persistent/client.ts').TaskRecord>;
-  get(id: string): Promise<import('../persistent/client.ts').TaskRecord>;
-  list(cwd: string): Promise<import('../persistent/client.ts').TaskList>;
-  cancel(id: string): Promise<import('../persistent/client.ts').TaskRecord>;
-  logs(id: string, offset: number, maxBytes: number): Promise<PersistentRemoteLogs>;
+  get(id: string, ownerSession?: string): Promise<import('../persistent/client.ts').TaskRecord>;
+  list(cwd: string, ownerSession?: string): Promise<import('../persistent/client.ts').TaskList>;
+  cancel(id: string, ownerSession?: string): Promise<import('../persistent/client.ts').TaskRecord>;
+  logs(id: string, offset: number, maxBytes: number, ownerSession?: string): Promise<PersistentRemoteLogs>;
 }
 
 

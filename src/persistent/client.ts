@@ -14,7 +14,7 @@ export interface StartRequest {
     env: Record<string, string>;
     timeoutSeconds: number;
     maxOutputBytes: number;
-    ownerSession?: string;
+    ownerSession?: string | undefined;
     notifyOnCompletion?: boolean;
     triggerOnCompletion?: boolean;
 }
@@ -38,10 +38,11 @@ export interface TaskRecord {
     signal?: string | null;
     diagnostic?: string;
 }
-function validateRecord(value: unknown, root: string, id?: string): TaskRecord {
+function validateRecord(value: unknown, root: string, id?: string, ownerSession?: string): TaskRecord {
     if (!value || typeof value !== 'object')
         throw Error('Invalid task record');
     const r = value as Record<string, unknown>;
+    if (ownerSession !== undefined && r['ownerSession'] !== ownerSession) throw Error('Session ownership mismatch');
     if (typeof r['id'] !== 'string' || !/^[\w-]{1,100}$/.test(r['id']) || (id && r['id'] !== id)
         || typeof r['cwd'] !== 'string' || !path.isAbsolute(r['cwd'])
         || typeof r['name'] !== 'string' || typeof r['command'] !== 'string'
@@ -91,23 +92,28 @@ export function createClient(options: {
         }
         throw Error('Persistent service unavailable');
     }
-    async function call(method: string, params: unknown): Promise<unknown> {
+    async function call(method: string, params: { ownerSession?: string | undefined; [key: string]: unknown } | StartRequest): Promise<unknown> {
+        if (params.ownerSession !== undefined && (typeof params.ownerSession !== 'string' || !params.ownerSession.length)) throw Error('Invalid ownerSession');
         await ensureService();
+        if (params.ownerSession !== undefined) {
+            const capabilities = await transport('ping', {}) as {sessionOwnership?: number};
+            if (capabilities.sessionOwnership !== 1) throw Error('Daemon lacks session ownership support; restart daemon retaining supervisors; no task replay');
+        }
         return transport(method, params);
     }
     return {
         ensureService,
-        async start(request: StartRequest) { return validateRecord(await call('start', request), root, request.id); },
-        async get(id: string) { return validateRecord(await call('get', { id }), root, id); },
-        async cancel(id: string) { return validateRecord(await call('cancel', { id }), root, id); },
-        async list(cwd?: string) {
+        async start(request: StartRequest) { return validateRecord(await call('start', request), root, request.id, request.ownerSession); },
+        async get(id: string, ownerSession?: string) { return validateRecord(await call('get', { id, ownerSession }), root, id, ownerSession); },
+        async cancel(id: string, ownerSession?: string) { return validateRecord(await call('cancel', { id, ownerSession }), root, id, ownerSession); },
+        async list(cwd?: string, ownerSession?: string) {
             const records: TaskList = Object.assign([] as TaskRecord[], {diagnostics: [] as AdmissionDiagnostic[]});
             for (let offset = 0;;) {
-                const result = await call('list', { cwd, offset });
+                const result = await call('list', { cwd, offset, ownerSession });
                 if (!result || typeof result !== 'object') throw Error('Invalid list response');
                 const page = result as Record<string,unknown>;
                 if (!Array.isArray(page['records']) || !Array.isArray(page['diagnostics'])) throw Error('Invalid list response');
-                records.push(...page['records'].map(value => validateRecord(value, root)));
+                records.push(...page['records'].map(value => validateRecord(value, root, undefined, ownerSession)));
                 for (const value of page['diagnostics']) {
                     if (!value || typeof value.id !== 'string' || typeof value.message !== 'string') throw Error('Invalid admission diagnostic');
                     records.diagnostics.push({id:value.id,message:value.message});
@@ -121,6 +127,6 @@ export function createClient(options: {
 }
 export function ensureService(): Promise<void> { return createClient().ensureService(); }
 export function start(request: StartRequest): Promise<TaskRecord> { return createClient().start(request); }
-export function get(id: string): Promise<TaskRecord> { return createClient().get(id); }
-export function list(cwd?: string): Promise<TaskList> { return createClient().list(cwd); }
-export function cancel(id: string): Promise<TaskRecord> { return createClient().cancel(id); }
+export function get(id: string, ownerSession?: string): Promise<TaskRecord> { return createClient().get(id, ownerSession); }
+export function list(cwd?: string, ownerSession?: string): Promise<TaskList> { return createClient().list(cwd, ownerSession); }
+export function cancel(id: string, ownerSession?: string): Promise<TaskRecord> { return createClient().cancel(id, ownerSession); }

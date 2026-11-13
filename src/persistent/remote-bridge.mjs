@@ -23,11 +23,12 @@ function publicRecord(value) {
     const { capability, ...safe } = value;
     return safe;
 }
-async function ensure() {
+async function ensure(ownerSession) {
     const address = endpoint('daemon');
     const ping = async () => {
         const result = await rpc(address, 'ping', {});
         if (!Number.isInteger(result?.pid) || typeof result?.startToken !== 'string' || result.protocolVersion !== 1) throw Error('Incompatible daemon protocol');
+        if (ownerSession !== undefined && result.sessionOwnership !== 1) throw Error('Daemon lacks session ownership support; restart daemon retaining supervisors; no task replay');
         return { ...result, protocol: 'pi-background-tasks-remote', version: 1,
             daemonProtocolVersion: 1, runtime: { node: process.version, platform: process.platform, arch: process.arch }, serviceRoot: root };
     };
@@ -54,10 +55,11 @@ async function run(request) {
         !request.params || typeof request.params !== 'object' || Array.isArray(request.params)) throw Error('Expected {method,params} request');
     const p = { ...request.params, op: request.method };
     if (!['ensure', 'start', 'get', 'list', 'cancel', 'logs'].includes(p.op)) throw Error('Unknown operation');
-    if (p.op === 'ensure') return ensure();
+    if (p.ownerSession !== undefined && (typeof p.ownerSession !== 'string' || !p.ownerSession.length)) throw Error('Invalid ownerSession');
+    if (p.op === 'ensure') return ensure(p.ownerSession);
     if (p.op !== 'list') id(p.id);
     if (p.cwd !== undefined && (typeof p.cwd !== 'string' || !path.isAbsolute(p.cwd))) throw Error('cwd must be absolute');
-    if (p.op !== 'start') await ensure();
+    if (p.op !== 'start') await ensure(p.ownerSession);
     const call = (method, params) => rpc(endpoint('daemon'), method, params);
     if (p.op === 'start') {
         if (typeof p.cwd !== 'string' || typeof p.command !== 'string' || typeof p.name !== 'string') throw Error('Invalid start request');
@@ -66,7 +68,7 @@ async function run(request) {
         const timeoutSeconds = p.timeoutSeconds ?? 0;
         if (!Number.isFinite(timeoutSeconds) || timeoutSeconds < 0) throw Error('Invalid timeout');
         const maxOutputBytes = integer(p.maxOutputBytes ?? 20971520, 1, Number.MAX_SAFE_INTEGER);
-        await ensure();
+        await ensure(p.ownerSession);
         return publicRecord(await call('start', {
             id: p.id, cwd: p.cwd, name: p.name, command: p.command,
             description: p.description, ownerSession: p.ownerSession,
@@ -75,13 +77,14 @@ async function run(request) {
         }));
     }
     if (p.op === 'list') {
-        const result = await call('list', { cwd: p.cwd, offset: integer(p.offset ?? 0, 0, Number.MAX_SAFE_INTEGER) });
+        const result = await call('list', { cwd: p.cwd, ownerSession: p.ownerSession, offset: integer(p.offset ?? 0, 0, Number.MAX_SAFE_INTEGER) });
         return { ...result, records: result.records.map(publicRecord) };
     }
-    if (p.op !== 'logs') return publicRecord(await call(p.op, { id: p.id }));
+    if (p.op !== 'logs') return publicRecord(await call(p.op, { id: p.id, ownerSession: p.ownerSession }));
     const offset = integer(p.offset ?? 0, 0, Number.MAX_SAFE_INTEGER);
     const maxBytes = integer(p.maxBytes ?? 49152, 1, 49152);
-    const record = await call('get', { id: p.id });
+    const record = await call('get', { id: p.id, ownerSession: p.ownerSession });
+    if (p.ownerSession !== undefined && record.ownerSession !== p.ownerSession) throw Error('Session ownership mismatch');
     const expected = path.join(root, 'tasks', p.id, 'output.log');
     if (record.id !== p.id || record.outputFile !== expected || fs.realpathSync(expected) !== expected) throw Error('Unsafe stored output path');
     const fd = fs.openSync(expected, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW);

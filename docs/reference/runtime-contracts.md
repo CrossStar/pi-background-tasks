@@ -30,13 +30,13 @@ This generated registry lists production environment-variable references, runtim
 | `PI_API_KEY` | remove | `src/core/attested-pi-run.ts:135` |
 | `PI_AUTH_FILE` | remove | `src/core/attested-pi-run.ts:135` |
 | `PI_BG_DISABLE_PI_TELEMETRY` | read | `src/core/registry.ts:205` |
-| `PI_BG_DISABLE_UPDATE_CHECK` | read | `src/extension.ts:491` |
+| `PI_BG_DISABLE_UPDATE_CHECK` | read | `src/extension.ts:504` |
 | `PI_BG_MAX_OUTPUT_BYTES` | read | `src/core/registry.ts:70` |
-| `PI_BG_REGISTRY_URL` | read | `src/extension.ts:500` |
+| `PI_BG_REGISTRY_URL` | read | `src/extension.ts:513` |
 | `PI_BG_SHELL` | read | `src/core/common.ts:662` |
 | `PI_BG_SHELL_PATH` | read | `src/core/common.ts:663` |
 | `PI_CACHE_RETENTION` | read | `src/core/anthropic-attribution.ts:587` |
-| `PI_OFFLINE` | read | `src/extension.ts:492` |
+| `PI_OFFLINE` | read | `src/extension.ts:505` |
 | `PIPELINE_ANTHROPIC_ATTRIBUTION_AUDIT_PATH` | read | `src/core/anthropic-attribution.ts:1013` |
 | `SHELL` | read | `src/core/common.ts:658` |
 | `SystemRoot` | read | `src/core/windows-taskkill.ts:96` |

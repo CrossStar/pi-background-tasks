@@ -237,10 +237,23 @@ export default function backgroundTasksExtension(pi: ExtensionAPI): void {
   };
   let releaseExecutionHook: (() => void) | undefined;
   let releaseReadyHook: (() => void) | undefined;
+  let restoreHookGeneration = 0;
+  let lastRestoreError: string | undefined;
   const installExecutionHook = () => {
     releaseReadyHook?.();
+    const generation = ++restoreHookGeneration;
     releaseReadyHook = pi.events.on(BG_PERSISTENT_READY_CHANNEL, () => {
-      if (currentCtx) void registry.restoreRemoteTasks(backgroundTaskContext(currentCtx)).catch(error => console.error('Remote persistent restore failed', error));
+      const context = currentCtx;
+      if (!context) return;
+      void registry.restoreRemoteTasks(backgroundTaskContext(context)).then(() => {
+        if (generation === restoreHookGeneration && currentCtx === context) lastRestoreError = undefined;
+      }).catch(error => {
+        if (generation !== restoreHookGeneration || currentCtx !== context) return;
+        const message = (error instanceof Error ? error.message : String(error)).replace(/[\r\n]+/gu, ' ').slice(0, 2048);
+        if (message === lastRestoreError) return;
+        lastRestoreError = message;
+        console.error(`Remote persistent restore failed: ${message}`);
+      });
     });
     releaseExecutionHook?.();
     releaseExecutionHook = pi.events.on(BG_EXECUTION_HOOK_CHANNEL, (request: unknown) => {

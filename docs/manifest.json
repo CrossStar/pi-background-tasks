@@ -82,7 +82,7 @@
       "state": "stale-authored-prose"
     },
     {
-      "authored_body_sha256": "sha256:3dd39d87e943462111d8092bc63a600b135db72405ae29cda7ef087123a1ac72",
+      "authored_body_sha256": "sha256:cc76653a222eea39b222eb6cac9aa2df6568da6752610a7fc165001a454222ef",
       "covers_sources": [
         "extensions/background-tasks.ts",
         "src/core/update-check.ts",
@@ -715,28 +715,28 @@
         "id": "command:bg",
         "kind": "command",
         "name": "bg",
-        "source": "src/extension.ts:601"
+        "source": "src/extension.ts:614"
       },
       {
         "description": "Clear finished background task footer notices",
         "id": "command:bg-clear",
         "kind": "command",
         "name": "bg-clear",
-        "source": "src/extension.ts:643"
+        "source": "src/extension.ts:656"
       },
       {
         "description": "Open the background task manager UI",
         "id": "command:bg-tasks",
         "kind": "command",
         "name": "bg-tasks",
-        "source": "src/extension.ts:635"
+        "source": "src/extension.ts:648"
       },
       {
         "description": "Show how to update pi-background-tasks to the latest published version",
         "id": "command:bg-update",
         "kind": "command",
         "name": "bg-update",
-        "source": "src/extension.ts:651"
+        "source": "src/extension.ts:664"
       },
       {
         "description": "Show or set Claude cache retention for this session (short, long, default)",
@@ -750,28 +750,28 @@
         "id": "command:jobs",
         "kind": "command",
         "name": "jobs",
-        "source": "src/extension.ts:689"
+        "source": "src/extension.ts:702"
       },
       {
         "description": "Stop a running background task: /kill <id>",
         "id": "command:kill",
         "kind": "command",
         "name": "kill",
-        "source": "src/extension.ts:733"
+        "source": "src/extension.ts:746"
       },
       {
         "description": "Show bounded output from a background task: /logs <id> [maxBytes]",
         "id": "command:logs",
         "kind": "command",
         "name": "logs",
-        "source": "src/extension.ts:702"
+        "source": "src/extension.ts:715"
       },
       {
         "description": "Open the Claude-like background task manager UI",
         "id": "command:tasks",
         "kind": "command",
         "name": "tasks",
-        "source": "src/extension.ts:627"
+        "source": "src/extension.ts:640"
       }
     ],
     "eventbus": [
@@ -799,7 +799,7 @@
         "id": "renderer:background-task-notification",
         "kind": "renderer",
         "name": "background-task-notification",
-        "source": "src/extension.ts:462"
+        "source": "src/extension.ts:475"
       }
     ],
     "shortcut": [
@@ -808,14 +808,14 @@
         "id": "shortcut:ctrl+alt+c",
         "kind": "shortcut",
         "name": "ctrl+alt+c",
-        "source": "src/extension.ts:681"
+        "source": "src/extension.ts:694"
       },
       {
         "description": "Open focused background task footer dock",
         "id": "shortcut:shift+down",
         "kind": "shortcut",
         "name": "shift+down",
-        "source": "src/extension.ts:674"
+        "source": "src/extension.ts:687"
       }
     ],
     "tool": [
@@ -841,7 +841,7 @@
           ],
           "type": "object"
         },
-        "source": "src/extension.ts:992"
+        "source": "src/extension.ts:1005"
       },
       {
         "description": "Read bounded output from a background task for deliberate inspection; this is not a waiting primitive. Output is capped at 50.0KB for model safety and points to the full output file when truncated.",
@@ -875,7 +875,7 @@
           ],
           "type": "object"
         },
-        "source": "src/extension.ts:947"
+        "source": "src/extension.ts:960"
       },
       {
         "description": "Start a named long-running shell command in the background and return immediately with a task ID and output path. By default, completed, failed, or killed terminal state is delivered automatically as <background-task-notification> and starts a follow-up agent turn; do not sleep or poll merely to wait. Output is written to .pi/tasks and model-visible logs are bounded to 50.0KB.",
@@ -932,7 +932,7 @@
           ],
           "type": "object"
         },
-        "source": "src/extension.ts:766"
+        "source": "src/extension.ts:779"
       },
       {
         "description": "Opt-in evidence-oriented direct Pi spawn. Launches exactly one `pi --mode json` child, records raw Pi events/stderr, hashes prompt/report/output, observes OAuth through ModelRegistry, and emits a strict attestation sidecar only after successful completion.",
@@ -993,7 +993,7 @@
           ],
           "type": "object"
         },
-        "source": "src/extension.ts:851"
+        "source": "src/extension.ts:864"
       },
       {
         "description": "Inspect one background task or list all running/recent background tasks. This is a point-in-time inspection tool, not a waiting primitive.",
@@ -1017,7 +1017,7 @@
           "required": [],
           "type": "object"
         },
-        "source": "src/extension.ts:916"
+        "source": "src/extension.ts:929"
       }
     ],
     "workflow": []

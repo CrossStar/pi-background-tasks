@@ -22,6 +22,8 @@ This subsystem owns the extension entrypoint, command/tool registration, footer 
 
 ## Execution discovery
 
+Connection-ready restoration failures are reported as bounded message strings, not Error objects with stacks. Identical failures are suppressed until a successful restoration; callbacks from an obsolete hook generation or session context cannot report into the replacement session.
+
 The host emits `sydney-kit:bg-execution:v1` synchronously for each task admission and exposes the compatible `sydney-kit:bg-hook:v1` readiness probe. Discovery errors and conflicting providers fail closed. Readiness listeners are detached on shutdown and rebound on session start; registry handoff receives the new host resolver, while admitted tasks keep their original backend. External task reruns from the dock are rejected to prevent executing an old remote command against a new target. See [execution backends v1](../api/execution-backends-v1.md).
 
 ## Footer status

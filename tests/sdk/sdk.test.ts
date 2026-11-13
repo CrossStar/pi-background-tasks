@@ -539,6 +539,33 @@ async function settledFooter(
 }
 
 void describe('sdk', () => {
+  void it('deduplicates remote restore diagnostics without printing Error stacks', async () => {
+    const eventBus = createEventBus();
+    const { session } = await harness({ eventBus });
+    await session.extensionRunner.emit({ type: 'session_start', reason: 'startup' });
+    const messages: unknown[][] = [];
+    const originalError = console.error;
+    const fail = async () => { throw new Error('bootstrap exit 1: unsafe permissions'); };
+    const unsubscribe = eventBus.on(BG_EXECUTION_CHANNEL, (request: unknown) => {
+      assert.ok(isJsonObject(request));
+      request['provider'] = { id: 'ssh:restore-test', cwd: '/remote', spawn: () => { throw Error('no spawn'); }, persistent: { start: fail, get: fail, list: fail, cancel: fail, logs: fail } };
+    });
+    try {
+      console.error = (...args: unknown[]) => { messages.push(args); };
+      for (let index = 0; index < 2; index++) {
+        eventBus.emit('sydney-kit:bg-persistent-ready:v1', {});
+        await new Promise(resolve => setImmediate(resolve));
+      }
+      assert.equal(messages.length, 1);
+      assert.deepEqual(messages[0], ['Remote persistent restore failed: bootstrap exit 1: unsafe permissions']);
+    } finally {
+      console.error = originalError;
+      unsubscribe();
+      await session.extensionRunner.emit({ type: 'session_shutdown', reason: 'quit' });
+      session.dispose();
+    }
+  });
+
   void it('discovers native execution providers synchronously and rejects agent bypasses', async () => {
     const eventBus = createEventBus();
     let spawns = 0;

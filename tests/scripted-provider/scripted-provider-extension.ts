@@ -25,6 +25,7 @@ const DEFAULT_USAGE = {
 };
 
 type Scenario =
+  | 'recovery-follow-up'
   | 'bg-run-follow-up'
   | 'notify-false'
   | 'wake-false'
@@ -49,6 +50,7 @@ type ScriptedBlock = TextContent | ScriptedToolCall;
 
 function parseScenario(value: string | undefined): Scenario {
   if (
+    value === 'recovery-follow-up' ||
     value === 'bg-run-follow-up' ||
     value === 'notify-false' ||
     value === 'wake-false' ||
@@ -155,6 +157,10 @@ function responseFor(
   contract: EventDrivenContractCheck,
   _context: Context,
 ): ScriptedAssistantMessage {
+
+  if (scenario === 'recovery-follow-up') {
+    return assistant([text(`Recovered completion follow-up ${callCount}`)], 'stop');
+  }
 
   if (scenario === 'json-tool-telemetry') {
     if (callCount === 1) {
@@ -312,6 +318,20 @@ function pushMessage(stream: AssistantMessageEventStream, message: ScriptedAssis
 export default function scriptedProviderExtension(pi: ExtensionAPI): void {
   let callCount = 0;
   const scenario = parseScenario(process.env['PI_BG_SCRIPTED_SCENARIO']);
+  if (scenario === 'recovery-follow-up') {
+    let preparing = false;
+    pi.on('before_agent_start', async (_event, ctx) => {
+      if (preparing || ctx.isIdle()) record({ type: 'preflight_violation', preparing, idle: ctx.isIdle() });
+      preparing = true;
+      try {
+        // Keep preparation open across multiple completion delivery polls.
+        await new Promise(resolve => setTimeout(resolve, 600));
+        if (ctx.isIdle()) record({ type: 'preflight_violation', idle: true });
+      } finally {
+        preparing = false;
+      }
+    });
+  }
 
   const ScriptedEchoParams = {
     type: 'object',

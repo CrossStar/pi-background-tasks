@@ -15,7 +15,7 @@ This authored section defines the boundary: documentation facts are extracted fr
 - Canonical package version: `2.8.0`
 - Governed markdown docs: 40
 - Public surfaces extracted: 18
-- Governed production sources: 25
+- Governed production sources: 26
 - Tool contracts extracted: 5
 - Schema IDs extracted: 5
 - Environment variable references extracted: 25

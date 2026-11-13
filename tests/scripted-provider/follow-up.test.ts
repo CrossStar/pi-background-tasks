@@ -22,16 +22,17 @@ const scriptedProviderPath = resolve('tests/scripted-provider/scripted-provider-
 const roots: string[] = [];
 
 type Scenario =
+  | 'recovery-follow-up'
   | 'bg-run-follow-up'
   | 'notify-false'
   | 'wake-false'
   | 'failed-follow-up'
   | 'display-only-bg';
 
-async function harness(scenario: Scenario) {
+async function harness(scenario: Scenario, options: { cwd?: string; sessionManager?: SessionManager } = {}) {
   const root = await mkdtemp(join(tmpdir(), 'pi-bg-agent-loop-'));
   roots.push(root);
-  const cwd = join(root, 'project');
+  const cwd = options.cwd ?? join(root, 'project');
   const agentDir = join(root, 'agent');
   const eventsPath = join(root, 'provider-events.jsonl');
   await mkdir(cwd, { recursive: true });
@@ -70,7 +71,7 @@ async function harness(scenario: Scenario) {
     cwd,
     agentDir,
     resourceLoader: loader,
-    sessionManager: SessionManager.inMemory(cwd),
+    sessionManager: options.sessionManager ?? SessionManager.inMemory(cwd),
     settingsManager,
     modelRuntime,
     noTools: 'builtin',
@@ -247,6 +248,46 @@ async function disposeHarness(h: Awaited<ReturnType<typeof harness>>) {
 }
 
 void describe('scripted-provider completion follow-up behavior', { concurrency: false }, () => {
+  void it('recovers multiple trigger-enabled completions into exactly one real follow-up each', { timeout: 20_000 }, async () => {
+    const first = await harness('recovery-follow-up');
+    await first.session.bindExtensions({});
+    const ids: string[] = [];
+    try {
+      const tool = first.session.getToolDefinition('bg_run');
+      assert.ok(tool);
+      for (let index = 0; index < 3; index++) {
+        const result = await tool.execute(`launch-${index}`, {
+          name: `Recovered ${index}`, isAgent: false,
+          command: `node -e ${JSON.stringify('setTimeout(() => {}, 1000)')}`,
+          notifyOnCompletion: true, triggerOnCompletion: true,
+        }, undefined, undefined, first.session.extensionRunner.createContext());
+        assert.ok(isJsonObject(result.details));
+        assert.ok(isJsonObject(result.details['task']));
+        ids.push(requiredString(result.details['task']['id'], 'launch id'));
+      }
+    } finally {
+      await disposeHarness(first);
+    }
+    // The original registry no longer exists when all durable commands finish.
+    await new Promise(resolve => setTimeout(resolve, 1800));
+    const recovered = await harness('recovery-follow-up', { cwd: first.cwd, sessionManager: first.session.sessionManager });
+    try {
+      await recovered.session.bindExtensions({ uiContext: recovered.session.extensionRunner.getUIContext() });
+      await waitFor(() => customNotifications(recovered.session).length === 3, 'three recovered receipts', 10_000);
+      await waitFor(async () => (await providerEvents(recovered.eventsPath)).length >= 3, 'three real model followups', 10_000);
+      await recovered.session.agent.waitForIdle();
+      assert.deepEqual(customNotifications(recovered.session).map(note => note.details['id']).sort(), ids.sort());
+      assert.ok(customNotifications(recovered.session).every(note => note.details['triggerOnCompletion'] === true));
+      assert.equal((await providerEvents(recovered.eventsPath)).length, 3);
+      assert.equal(assistantTexts(recovered.session).filter(text => text.includes('Recovered completion follow-up')).length, 3);
+      await recovered.session.reload();
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      assert.equal(customNotifications(recovered.session).length, 3);
+      assert.equal((await providerEvents(recovered.eventsPath)).length, 3);
+    } finally {
+      await disposeHarness(recovered);
+    }
+  });
   void it(
     'BUG-181 bg_run yields without polling and its completion event triggers one real follow-up turn',
     { timeout: 15_000 },
@@ -297,7 +338,8 @@ void describe('scripted-provider completion follow-up behavior', { concurrency: 
         assert.match(note.content, /<guidance>Terminal state and output metadata are durable\./);
         assert.match(note.content, /Do not call bg_status to reconfirm/);
         assert.equal(note.details['triggerOnCompletion'], true);
-        assert.equal(note.details['notified'], true);
+        // Submission snapshots precede the session-history acknowledgement.
+        assert.equal(note.details['notified'], false);
       } finally {
         await disposeHarness(h);
       }

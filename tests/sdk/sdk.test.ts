@@ -289,6 +289,14 @@ function customNotifications(session: AgentSession): CustomNotificationEntry[] {
   return entries.filter(isCustomNotificationEntry);
 }
 
+async function waitForNotification(session: AgentSession, id: string): Promise<void> {
+  for (let attempt = 0; attempt < 200; attempt++) {
+    if (customNotifications(session).some(entry => entry.details['id'] === id)) return;
+    await new Promise(resolve => setTimeout(resolve, 50));
+  }
+  assert.fail(`missing terminal notification for ${id}`);
+}
+
 async function readJsonEventually(path: string): Promise<JsonObject> {
   let last = '';
   for (let i = 0; i < 20; i++) {
@@ -1155,7 +1163,11 @@ console.error('sdk stderr');
       assert.match(note.content, /<task-name>Notify SDK<\/task-name>/);
       assert.match(note.content, /<status>completed<\/status>/);
       assert.match(note.content, /&quot;|Notify SDK/);
-      assert.equal(note.details['notified'], true);
+      // The submitted payload precedes acknowledgement; the live registry
+      // acknowledges only after this entry is actually in session history.
+      assert.equal(note.details['notified'], false);
+      const acknowledged = await exec(session, 'bg_status', { taskId: taskFromResult(notified).id });
+      assert.equal(firstTask(acknowledged).notified, true);
       const status = await exec(session, 'bg_status', { taskId: hiddenTask.id });
       assert.equal(firstTask(status).notified, false);
     } finally {
@@ -1715,22 +1727,66 @@ console.log(JSON.stringify({ type: "message_end", message: secondMessage }));
     const unsubscribe = eventBus.on(BG_TERMINAL_CHANNEL, event => { terminals.push(event); });
     const second = await harness({ cwd: first.cwd, eventBus, sessionManager: first.session.sessionManager });
     try {
-      await second.session.bindExtensions({});
+      await second.session.bindExtensions({ uiContext: second.session.extensionRunner.getUIContext() });
       const restored = firstTask(await exec(second.session, 'bg_status', { taskId: running.id }));
       assert.equal(restored.status, 'running');
       assert.equal(restored.outputPath, running.outputPath);
       const completed = await wait(second.session, offline.id);
       assert.equal(completed.status, 'completed');
-      assert.equal(completed.notified, false);
+      assert.equal(completed.notifyOnCompletion, true);
+      assert.equal(completed.triggerOnCompletion, false);
+      await waitForNotification(second.session, offline.id);
       assert.match(resultText(await exec(second.session, 'bg_logs', { taskId: offline.id })), /offline-done/);
       await exec(second.session, 'bg_kill', { taskId: running.id });
       assert.equal((await wait(second.session, running.id)).status, 'killed');
-      assert.equal(customNotifications(second.session).length, 0);
+      await waitForNotification(second.session, running.id);
+      assert.equal(customNotifications(second.session).filter(entry => entry.details['id'] === offline.id).length, 1);
+      await second.session.reload();
+      assert.equal(customNotifications(second.session).filter(entry => entry.details['id'] === offline.id).length, 1);
       assert.deepEqual(terminals, []);
     } finally {
       unsubscribe();
       await second.session.extensionRunner.emit({ type: 'session_shutdown', reason: 'quit' });
       second.session.dispose();
+    }
+  });
+
+  void it('delivers a notification-enabled durable task once across pure reload and fresh recovery off its receipt branch', async () => {
+    const first = await harness();
+    await first.session.bindExtensions({ uiContext: first.session.extensionRunner.getUIContext() });
+    const manager = first.session.sessionManager;
+    const branchPoint = manager.appendMessage({ role: 'user', content: 'receipt branch anchor', timestamp: Date.now() });
+    const task = taskFromResult(await exec(first.session, 'bg_run', {
+      isAgent: false, name: 'Reload notification',
+      command: `node -e ${JSON.stringify('setTimeout(() => {}, 1000)')}`,
+      notifyOnCompletion: true, triggerOnCompletion: false,
+    }));
+    try {
+      await first.session.reload();
+      await waitForNotification(first.session, task.id);
+      assert.equal(customNotifications(first.session).filter(entry => entry.details['id'] === task.id).length, 1);
+      await first.session.reload();
+      assert.equal(customNotifications(first.session).filter(entry => entry.details['id'] === task.id).length, 1);
+    } finally {
+      await first.session.extensionRunner.emit({ type: 'session_shutdown', reason: 'quit' });
+      first.session.dispose();
+    }
+    manager.branch(branchPoint);
+    assert.equal(manager.getBranch().filter(isCustomNotificationEntry).length, 0);
+    const recovered = await harness({ cwd: first.cwd, sessionManager: manager });
+    try {
+      await recovered.session.bindExtensions({ uiContext: recovered.session.extensionRunner.getUIContext() });
+      const restored = firstTask(await exec(recovered.session, 'bg_status', { taskId: task.id }));
+      assert.equal(restored.status, 'completed');
+      assert.equal(restored.notifyOnCompletion, true);
+      assert.equal(restored.triggerOnCompletion, false);
+      // Allow restore and repeated registry delivery polls to observe the historical receipt.
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      assert.equal(customNotifications(recovered.session).filter(entry => entry.details['id'] === task.id).length, 1);
+      assert.equal(manager.getBranch().filter(isCustomNotificationEntry).length, 0);
+    } finally {
+      await recovered.session.extensionRunner.emit({ type: 'session_shutdown', reason: 'quit' });
+      recovered.session.dispose();
     }
   });
 

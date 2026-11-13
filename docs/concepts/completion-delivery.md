@@ -40,7 +40,7 @@ When enabled and not during shutdown, terminal completion sends a custom message
 - `<summary>`
 - `<guidance>` that says terminal state and output metadata are durable and not to reconfirm with `bg_status`.
 
-The structured details contain the task snapshot, including delivery flags and `notified` state.
+The structured details contain the task snapshot, including delivery flags and `notified` state at submission. The embedded snapshot can therefore still say `notified:false`; the actual session entry is the receipt, and the registry acknowledges it afterward.
 
 ## Agent guidance
 
@@ -54,7 +54,9 @@ If notification send fails, the task resets `notified:false` and logs the error;
 
 Only tasks whose stored `ownerSession` equals the active Pi session ID are recovered. Starting a new or forked conversation does not adopt another session's tasks, even in the same directory. Records without an owner remain stored but are not automatically claimed.
 
-Tasks recovered into their owning session after a Pi restart remain monitoring-only. Both already-finished and still-running recovered tasks suppress automatic completion messages, model wakeups, and unsolicited terminal EventBus publication. Ownership and notification subscription are separate: the owning session can inspect and stop its recovered tasks without restarting a previous notification subscription. Suppression is distinct from successful notification delivery. This does not promise exactly-once message delivery across a host crash.
+Tasks recovered into their owning session retain their original delivery preferences. Both already-finished and still-running recovered tasks can notify that session when it is idle and has no pending messages. Recovery still suppresses unsolicited terminal EventBus publication. The persistent task record supplies notification intent; an actual `background-task-notification` entry with the matching task ID in the owner's full session history supplies acknowledgement, including entries on other branches. Sending a message alone does not set `notified:true`. Failed or unconfirmed attempts are retried with bounded backoff while pending terminal tasks remain retained.
+
+Delivery is deferred while the host is busy to avoid its volatile streaming queues. A recorded notification does not prove that the subsequent model response succeeded. Session-tree acknowledgement follows the host's persistence guarantees: fresh or in-memory sessions may not yet have a disk file, and no stronger fsync or exactly-once guarantee across concurrent hosts is claimed. Updating from an older registry implementation requires reopening the same session in a new Pi process, because ordinary hot reload retains the existing registry object.
 
 ## Related docs
 

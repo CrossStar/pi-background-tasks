@@ -13,7 +13,7 @@
       "state": "pass"
     },
     {
-      "authored_body_sha256": "sha256:98fa22736d29d4c09f369ba4f054c8c8d6a8763a535e625210e3c7a82072625e",
+      "authored_body_sha256": "sha256:8ce0d2abda6bc54218c8dbfbe96945e65427139143eb4cae1af785fe22fa6a7e",
       "covers_sources": [
         "src/core/execution-backend.ts"
       ],
@@ -23,7 +23,7 @@
       "state": "missing"
     },
     {
-      "authored_body_sha256": "sha256:dfc4347914f30db34e4accf1253589f1a63454ef69757b8d5892d1cd753a209b",
+      "authored_body_sha256": "sha256:a193998414925119988c8db58acf3200832fb20f9029422d93164605811a0c29",
       "covers_sources": [
         "src/core/persistent-runtime.ts",
         "src/core/remote-persistent.ts"
@@ -57,7 +57,7 @@
       "state": "stale-authored-prose"
     },
     {
-      "authored_body_sha256": "sha256:06fbd18efbf8b388e27fcb8b36fb4884f33b6b7db891a0e5e84c32117545df4d",
+      "authored_body_sha256": "sha256:737604e39dfd57446bc354f8bf51c103127b4c146761a2eadf0446b972bc34a8",
       "covers_sources": [
         "src/core/common.ts",
         "src/core/registry.ts",
@@ -82,9 +82,10 @@
       "state": "stale-authored-prose"
     },
     {
-      "authored_body_sha256": "sha256:cc76653a222eea39b222eb6cac9aa2df6568da6752610a7fc165001a454222ef",
+      "authored_body_sha256": "sha256:5af566edae4ab83155a6a9c7d3006ad776ee1192657db09e924b1787629867a4",
       "covers_sources": [
         "extensions/background-tasks.ts",
+        "src/core/completion-receipt.ts",
         "src/core/update-check.ts",
         "src/extension.ts",
         "src/ui/background-tasks-manager.ts",
@@ -459,6 +460,7 @@
       "audience": "maintainer",
       "covers_sources": [
         "extensions/background-tasks.ts",
+        "src/core/completion-receipt.ts",
         "src/core/update-check.ts",
         "src/extension.ts",
         "src/ui/background-tasks-manager.ts",
@@ -715,28 +717,28 @@
         "id": "command:bg",
         "kind": "command",
         "name": "bg",
-        "source": "src/extension.ts:614"
+        "source": "src/extension.ts:617"
       },
       {
         "description": "Clear finished background task footer notices",
         "id": "command:bg-clear",
         "kind": "command",
         "name": "bg-clear",
-        "source": "src/extension.ts:656"
+        "source": "src/extension.ts:659"
       },
       {
         "description": "Open the background task manager UI",
         "id": "command:bg-tasks",
         "kind": "command",
         "name": "bg-tasks",
-        "source": "src/extension.ts:648"
+        "source": "src/extension.ts:651"
       },
       {
         "description": "Show how to update pi-background-tasks to the latest published version",
         "id": "command:bg-update",
         "kind": "command",
         "name": "bg-update",
-        "source": "src/extension.ts:664"
+        "source": "src/extension.ts:667"
       },
       {
         "description": "Show or set Claude cache retention for this session (short, long, default)",
@@ -750,28 +752,28 @@
         "id": "command:jobs",
         "kind": "command",
         "name": "jobs",
-        "source": "src/extension.ts:702"
+        "source": "src/extension.ts:705"
       },
       {
         "description": "Stop a running background task: /kill <id>",
         "id": "command:kill",
         "kind": "command",
         "name": "kill",
-        "source": "src/extension.ts:746"
+        "source": "src/extension.ts:749"
       },
       {
         "description": "Show bounded output from a background task: /logs <id> [maxBytes]",
         "id": "command:logs",
         "kind": "command",
         "name": "logs",
-        "source": "src/extension.ts:715"
+        "source": "src/extension.ts:718"
       },
       {
         "description": "Open the Claude-like background task manager UI",
         "id": "command:tasks",
         "kind": "command",
         "name": "tasks",
-        "source": "src/extension.ts:640"
+        "source": "src/extension.ts:643"
       }
     ],
     "eventbus": [
@@ -799,7 +801,7 @@
         "id": "renderer:background-task-notification",
         "kind": "renderer",
         "name": "background-task-notification",
-        "source": "src/extension.ts:475"
+        "source": "src/extension.ts:477"
       }
     ],
     "shortcut": [
@@ -808,14 +810,14 @@
         "id": "shortcut:ctrl+alt+c",
         "kind": "shortcut",
         "name": "ctrl+alt+c",
-        "source": "src/extension.ts:694"
+        "source": "src/extension.ts:697"
       },
       {
         "description": "Open focused background task footer dock",
         "id": "shortcut:shift+down",
         "kind": "shortcut",
         "name": "shift+down",
-        "source": "src/extension.ts:687"
+        "source": "src/extension.ts:690"
       }
     ],
     "tool": [
@@ -841,7 +843,7 @@
           ],
           "type": "object"
         },
-        "source": "src/extension.ts:1005"
+        "source": "src/extension.ts:1008"
       },
       {
         "description": "Read bounded output from a background task for deliberate inspection; this is not a waiting primitive. Output is capped at 50.0KB for model safety and points to the full output file when truncated.",
@@ -875,7 +877,7 @@
           ],
           "type": "object"
         },
-        "source": "src/extension.ts:960"
+        "source": "src/extension.ts:963"
       },
       {
         "description": "Start a named long-running shell command in the background and return immediately with a task ID and output path. By default, completed, failed, or killed terminal state is delivered automatically as <background-task-notification> and starts a follow-up agent turn; do not sleep or poll merely to wait. Output is written to .pi/tasks and model-visible logs are bounded to 50.0KB.",
@@ -932,7 +934,7 @@
           ],
           "type": "object"
         },
-        "source": "src/extension.ts:779"
+        "source": "src/extension.ts:782"
       },
       {
         "description": "Opt-in evidence-oriented direct Pi spawn. Launches exactly one `pi --mode json` child, records raw Pi events/stderr, hashes prompt/report/output, observes OAuth through ModelRegistry, and emits a strict attestation sidecar only after successful completion.",
@@ -993,7 +995,7 @@
           ],
           "type": "object"
         },
-        "source": "src/extension.ts:864"
+        "source": "src/extension.ts:867"
       },
       {
         "description": "Inspect one background task or list all running/recent background tasks. This is a point-in-time inspection tool, not a waiting primitive.",
@@ -1017,7 +1019,7 @@
           "required": [],
           "type": "object"
         },
-        "source": "src/extension.ts:929"
+        "source": "src/extension.ts:932"
       }
     ],
     "workflow": []
@@ -1041,6 +1043,9 @@
     ],
     "src/core/common.ts": [
       "subsystems/background-task-runtime"
+    ],
+    "src/core/completion-receipt.ts": [
+      "subsystems/host-ui-and-telemetry"
     ],
     "src/core/durable-fs.ts": [
       "subsystems/child-launch-durability-and-safety"

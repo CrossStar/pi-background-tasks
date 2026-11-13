@@ -150,10 +150,14 @@ export type CompletionNotificationSender = (
   options: CompletionNotificationOptions,
 ) => void;
 
+export type CompletionDeliveryState = 'delivered' | 'pending' | 'ready';
+export type CompletionDeliveryChecker = (task: BgTaskSnapshot) => CompletionDeliveryState;
+
 export interface BackgroundTaskHostBindings {
   resolveExecution?: BackgroundExecutionResolver | undefined;
   onChange?: () => void;
   sendCompletionNotification: CompletionNotificationSender;
+  getCompletionDeliveryState?: CompletionDeliveryChecker;
   publishTerminal?: (task: BgTaskSnapshot) => void;
 }
 
@@ -161,6 +165,7 @@ export interface BackgroundTaskRegistryOptions {
   resolveExecution?: BackgroundExecutionResolver | undefined;
   onChange?: () => void;
   sendCompletionNotification: CompletionNotificationSender;
+  getCompletionDeliveryState?: CompletionDeliveryChecker;
   publishTerminal?: (task: BgTaskSnapshot) => void;
   spawn?: BackgroundTaskSpawn;
   killProcess?: KillProcessFn;
@@ -786,6 +791,10 @@ export class BackgroundTaskRegistry {
   private readonly logger: Pick<Console, 'error'>;
   private onChange: () => void;
   private sendCompletionNotification: CompletionNotificationSender;
+  private getCompletionDeliveryState: CompletionDeliveryChecker | undefined;
+  private notificationReserved = false;
+  private nextNotificationAttempt = 0;
+  private readonly notificationRetries = new WeakMap<BgTask, { attempts: number; nextRetry: number; error?: string }>();
   private publishTerminalSnapshot: (task: BgTaskSnapshot) => void;
   private readonly windowsKillStates = new WeakMap<BgTask, WindowsKillState>();
 
@@ -817,6 +826,7 @@ export class BackgroundTaskRegistry {
     this.logger = options.logger ?? console;
     this.onChange = options.onChange ?? noopOnChange;
     this.sendCompletionNotification = options.sendCompletionNotification;
+    this.getCompletionDeliveryState = options.getCompletionDeliveryState;
     this.publishTerminalSnapshot = options.publishTerminal ?? noopOnChange;
   }
 
@@ -838,6 +848,7 @@ export class BackgroundTaskRegistry {
     if (value) this.durablePollGeneration++;
     if (value && this.durablePoll) clearTimeout(this.durablePoll);
     if (value) this.durablePoll = undefined;
+    else this.scheduleDurablePoll();
   }
 
   detachHost(): void {
@@ -852,6 +863,7 @@ export class BackgroundTaskRegistry {
     this.resolveExecution = bindings.resolveExecution;
     this.onChange = bindings.onChange ?? noopOnChange;
     this.sendCompletionNotification = bindings.sendCompletionNotification;
+    this.getCompletionDeliveryState = bindings.getCompletionDeliveryState;
     this.publishTerminalSnapshot = bindings.publishTerminal ?? noopOnChange;
     this.hostBound = true;
     this.scheduleDurablePoll();
@@ -929,7 +941,7 @@ export class BackgroundTaskRegistry {
       const task: BgTask = { ownerSession: record.ownerSession, id: record.id, name: record.name, command: record.command,
         cwd: remote.cwd, status: 'running', outputPath: join(remote.root, `${record.id}.output`), outputAbsPath: join(remote.root, `${record.id}.output`), metadataAbsPath: join(remote.root, `${record.id}.output.json`),
         startTime: record.startedAt, bytesWritten: 0, isAgent: false, notified: false,
-        notifyOnCompletion: false, triggerOnCompletion: false, waiters: [], lifetime: 'persistent',
+        notifyOnCompletion: record.notifyOnCompletion === true, triggerOnCompletion: record.triggerOnCompletion === true, waiters: [], lifetime: 'persistent',
         execution: { kind: 'external', id: remote.id, cwd: remote.cwd } };
       this.taskClients.set(task, remote);
       this.restoredDurable.add(task);
@@ -970,8 +982,8 @@ export class BackgroundTaskRegistry {
         bytesWritten: record.outputBytes ?? 0,
         isAgent: false,
         notified: false,
-        notifyOnCompletion: false,
-        triggerOnCompletion: false,
+        notifyOnCompletion: record.notifyOnCompletion === true,
+        triggerOnCompletion: record.triggerOnCompletion === true,
         waiters: [],
       };
       this.restoredDurable.add(task);
@@ -1010,12 +1022,12 @@ export class BackgroundTaskRegistry {
     if (task.status !== 'running') {
       task.finalized = true;
       for (const waiter of task.waiters.splice(0)) waiter();
-      if (!this.restoredDurable.has(task)) {
+      {
         const deliver = async () => {
           await metadataReady;
           await task.terminalPublicationGate;
-          if (this.restoredDurable.has(task) || this.shuttingDown) return;
           this.deliveryReady.add(task);
+          if (this.shuttingDown) return;
           this.publishTerminal(task);
           this.notifyCompletion(task);
         };
@@ -1064,6 +1076,7 @@ export class BackgroundTaskRegistry {
           this.durableRefreshing.delete(task);
         });
       }
+      for (const task of this.tasks.values()) this.notifyCompletion(task);
       this.pruneOldTasks();
       this.scheduleDurablePoll();
     }, 1000);
@@ -2604,8 +2617,30 @@ export class BackgroundTaskRegistry {
   }
 
   private notifyCompletion(task: BgTask): void {
-    if (this.restoredDurable.has(task) || !this.deliveryReady.has(task) || !this.hostBound || !task.notifyOnCompletion || task.notified || this.shuttingDown) return;
-    task.notified = true;
+    if (!this.deliveryReady.has(task) || !this.hostBound || !task.notifyOnCompletion || task.notified || this.shuttingDown || this.notificationReserved) return;
+    this.scheduleDurablePoll();
+    const acknowledge = () => {
+      task.notified = true;
+      this.notificationRetries.delete(task);
+      void this.writeMetadata(task).catch(error => this.logger.error('Notification acknowledgement metadata failed', error));
+    };
+    const previous = this.notificationRetries.get(task);
+    const retry = (error?: unknown) => {
+      const attempts = Math.min((previous?.attempts ?? 0) + 1, 5);
+      const message = error === undefined ? undefined : String(error).replace(/[\r\n]+/gu, ' ').slice(0, 512);
+      this.notificationRetries.set(task, { attempts, nextRetry: this.now() + Math.min(2000 * 2 ** (attempts - 1), 30000), ...(message === undefined ? {} : { error: message }) });
+      if (message !== undefined && message !== previous?.error) this.logger.error(`Background notification failed for ${task.id}: ${message}`);
+    };
+    this.notificationReserved = true;
+    try {
+      const state = this.getCompletionDeliveryState?.(snapshot(task));
+      if (state === 'delivered') { acknowledge(); return; }
+      if (state === 'pending') return;
+      if ((previous?.nextRetry ?? 0) > this.now() || (this.getCompletionDeliveryState && this.nextNotificationAttempt > this.now())) return;
+    } catch (error) { retry(error); return; }
+    finally { this.notificationReserved = false; }
+    this.notificationReserved = true;
+    if (this.getCompletionDeliveryState) this.nextNotificationAttempt = this.now() + 1000;
     const exit =
       task.exitCode === undefined ? '' : `\n  <exit-code>${String(task.exitCode)}</exit-code>`;
     const error = task.error ? `\n  <error>${escapeXml(task.error)}</error>` : '';
@@ -2636,11 +2671,12 @@ export class BackgroundTaskRegistry {
         },
         { deliverAs: 'followUp', triggerTurn: task.triggerOnCompletion },
       );
+      if (!this.getCompletionDeliveryState || this.getCompletionDeliveryState(snapshot(task)) === 'delivered') acknowledge();
+      else retry();
     } catch (error) {
-      task.notified = false;
-      throw new Error(
-        `Failed to send background task notification for ${task.id}: ${error instanceof Error ? error.message : String(error)}`,
-      );
+      retry(error);
+    } finally {
+      this.notificationReserved = false;
     }
   }
 

@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { BackgroundTaskRegistry } from '../../src/core/registry.ts';
 
-test('local command survives registry shutdown and restores without delivery', async () => {
+test('local command survives shutdown and restores same-owner completion delivery', async () => {
   const cwd = await mkdtemp(join(tmpdir(), 'bg-registry-reconnect-'));
   const ctx = { cwd, sessionId: 'first', modelRegistry: { getAll: () => [] } };
   let notifications = 0;
@@ -36,8 +36,15 @@ test('local command survives registry shutdown and restores without delivery', a
     assert.equal(restored.status, 'completed');
     assert.equal(await readFile(restored.outputAbsPath, 'utf8'), 'survived');
     second.rebindHost(options);
-    assert.equal(restored.notified, false);
-    assert.equal(notifications, 0);
+    assert.equal(restored.notified, true);
+    assert.equal(notifications, 1);
     assert.equal(publications, 0);
+    const acknowledged = new BackgroundTaskRegistry({ ...options, getCompletionDeliveryState: () => 'delivered' });
+    try {
+      await acknowledged.restoreDurableTasks(ctx);
+      await new Promise(resolve => setTimeout(resolve, 20));
+      assert.equal(acknowledged.resolveTask(task.id).notified, true);
+      assert.equal(notifications, 1);
+    } finally { acknowledged.setShuttingDown(true); acknowledged.detachHost(); }
   } finally { second.setShuttingDown(true); second.detachHost(); }
 });

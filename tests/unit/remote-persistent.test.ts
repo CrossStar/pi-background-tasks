@@ -47,7 +47,7 @@ test('remote cache resumes interrupted chunks without duplicates and pins method
   } finally { await rm(cwd, { recursive: true, force: true }); }
 });
 
-test('registry publishes only cached terminal output and restoration is monitoring-only', async () => {
+test('registry publishes cached output and restored records with missing flags stay silent', async () => {
   const cwd = await mkdtemp(join(tmpdir(), 'bg-registry-'));
   let cancelled = 0;
   let notifications = 0;

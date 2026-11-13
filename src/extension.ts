@@ -47,6 +47,7 @@ import {
   type BackgroundTaskExtensionService,
 } from './core/extension-api.ts';
 import { persistentRuntimeBundle } from './core/persistent-runtime.ts';
+import { completionDeliveryState } from './core/completion-receipt.ts';
 import {
   BG_EXECUTION_CHANNEL,
   BG_PERSISTENT_READY_CHANNEL,
@@ -277,6 +278,7 @@ export default function backgroundTasksExtension(pi: ExtensionAPI): void {
 
   let eventService: BackgroundTaskExtensionService | undefined;
   let registry = new BackgroundTaskRegistry({
+    getCompletionDeliveryState: (task) => completionDeliveryState(currentCtx, task),
     resolveExecution,
     onChange: () => {
       updateUi();
@@ -524,7 +526,7 @@ export default function backgroundTasksExtension(pi: ExtensionAPI): void {
     const taskCtx = backgroundTaskContext(ctx);
     if (registry.isShuttingDown() || !registry.matchesSession(taskCtx)) {
       registry.detachHost();
-      registry = new BackgroundTaskRegistry({ resolveExecution, sendCompletionNotification: (message, options) => pi.sendMessage(message, options) });
+      registry = new BackgroundTaskRegistry({ resolveExecution, getCompletionDeliveryState: (task) => completionDeliveryState(currentCtx, task), sendCompletionNotification: (message, options) => pi.sendMessage(message, options) });
     }
     registry = acquireProcessRegistry(taskCtx, registry);
     registry.setExecutionResolver(resolveExecution);
@@ -548,6 +550,7 @@ export default function backgroundTasksExtension(pi: ExtensionAPI): void {
       isShuttingDown: () => registry.isShuttingDown(),
     });
     registry.rebindHost({
+      getCompletionDeliveryState: (task) => completionDeliveryState(currentCtx, task),
       resolveExecution,
       onChange: () => {
         updateUi();

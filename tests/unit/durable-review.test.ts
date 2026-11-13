@@ -61,17 +61,19 @@ test('uncertain admission retains ID and known rejection removes pending view', 
   } finally { f.registry.setShuttingDown(true); }
 });
 
-test('shutdown suppresses a completion already waiting on publication gate', async () => {
+test('shutdown defers gated completion until the same owner resumes', async () => {
   const f = await fixture();
   let release!: () => void;
   const gate = new Promise<void>(resolve => { release = resolve; });
   f.record.status = 'completed';
   await f.registry.startTask(f.ctx, 'true', { terminalPublicationGate: gate });
   f.registry.setShuttingDown(true);
-  f.registry.setShuttingDown(false);
   release();
   await new Promise(resolve => setImmediate(resolve));
   assert.equal(f.delivered(), 0);
+  f.registry.setShuttingDown(false);
+  await new Promise(resolve => setTimeout(resolve, 1100));
+  assert.equal(f.delivered(), 1);
   f.registry.setShuttingDown(true);
 });
 

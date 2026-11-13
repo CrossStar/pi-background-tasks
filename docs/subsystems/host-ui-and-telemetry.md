@@ -5,7 +5,7 @@ mode: authored
 review_policy: behavioral
 stability: stable
 covers_surfaces: []
-covers_sources: [extensions/background-tasks.ts, src/core/update-check.ts, src/extension.ts, src/ui/background-tasks-manager.ts, src/ui/log-search.ts]
+covers_sources: [extensions/background-tasks.ts, src/core/completion-receipt.ts, src/core/update-check.ts, src/extension.ts, src/ui/background-tasks-manager.ts, src/ui/log-search.ts]
 ---
 # Host UI and telemetry
 
@@ -21,6 +21,8 @@ This subsystem owns the extension entrypoint, command/tool registration, footer 
 - renderer: `background-task-notification`.
 
 ## Execution discovery
+
+`completion-receipt.ts` checks the active owner session's full entry tree for an exact notification task ID. A recorded receipt wins even while the host is busy; otherwise delivery waits for an idle host with no pending messages. The extension installs this checker before restoring tasks and rebinds it after reload. The receipt confirms presence in the session tree, not successful model processing or stronger disk durability than Pi supplies.
 
 Connection-ready restoration failures are reported as bounded message strings, not Error objects with stacks. Identical failures are suppressed until a successful restoration; callbacks from an obsolete hook generation or session context cannot report into the replacement session.
 

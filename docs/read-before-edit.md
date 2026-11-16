@@ -41,6 +41,7 @@ Every production file under `src/**` and `extensions/**` has exactly one primary
 | `src/persistent/windows-tree.mjs` | [subsystems/persistent-runtime](./subsystems/persistent-runtime.md) |
 | `src/ui/background-tasks-manager.ts` | [subsystems/host-ui-and-telemetry](./subsystems/host-ui-and-telemetry.md) |
 | `src/ui/log-search.ts` | [subsystems/host-ui-and-telemetry](./subsystems/host-ui-and-telemetry.md) |
+| `src/ui/sanitize-display.ts` | [subsystems/host-ui-and-telemetry](./subsystems/host-ui-and-telemetry.md) |
 
 ## Public surfaces
 

@@ -175,6 +175,38 @@ function assertWidth(lines: string[], width: number) {
 }
 
 void describe('BackgroundTasksManager component', () => {
+  void it('renders physical rows for multiline commands and unsafe metadata without changing copy', async () => {
+    const command = 'printf first\n\tprintf second\r\n\x1b[2Jprintf third';
+    let copied = '';
+    const unsafe = 'name\n\t\x1b[2J\x1b]0;hidden\x07text';
+    const fixture = task({ command, name: unsafe, error: unsafe, description: unsafe, outputPath: unsafe });
+    const { instance } = manager({ getHeight: () => 40, copyText: async (text) => { copied = text; } }, [fixture]);
+    const assertRows = () => {
+      for (const width of [80, 120]) {
+        const rows = instance.render(width);
+        assertWidth(rows, width);
+        for (const row of rows) {
+          assert.doesNotMatch(row.replace(/\x1b\[[0-9:;]*m/g, ''), /[\x00-\x1f\x7f-\x9f]/);
+          assert.ok(!row.includes('hidden'));
+        }
+      }
+    };
+    try {
+      assertRows();
+      instance.handleInput('\r');
+      assertRows();
+      instance.handleInput('v');
+      assertRows();
+      const full = instance.render(120).join('\n');
+      assert.match(full, /printf first/);
+      assert.match(full, /printf second/);
+      assert.match(full, /printf third/);
+      instance.handleInput('y');
+      await new Promise((resolve) => setImmediate(resolve));
+      assert.equal(copied, command);
+      assert.equal(fixture.command, command);
+    } finally { instance.dispose(); }
+  });
   void it('scrolls only the hovered log body in wide, narrow and detail layouts', async () => {
     const root = await mkdtemp(join(tmpdir(), 'bg-wheel-'));
     const output = join(root, 'log');
@@ -231,10 +263,13 @@ void describe('BackgroundTasksManager component', () => {
       let rendered = stripAnsi(h.instance.render(100).join('\n'));
       assert.match(rendered, /CHECKPOINT start/);
       assert.doesNotMatch(rendered, /progress 1\/360/);
-      await writeFile(output, initial + '\r\x1b[32mprogress 3/360\x1b[0m\r');
+      await writeFile(output, initial + '\r\x1b[32mprogress 3/360\x1b[0m\x1b[2J\x1b]0;hidden\nsecret\x07\x90payload\x9c\t\r');
       await waitForText(/progress 3\/360/);
       rendered = stripAnsi(h.instance.render(100).join('\n'));
-      assert.doesNotMatch(rendered, /progress 2\/360/);
+      assert.doesNotMatch(rendered, /progress 2\/360|hidden|secret|payload/);
+      for (const row of h.instance.render(100)) {
+        assert.doesNotMatch(row.replace(/\x1b\[[0-9:;]*m/g, ''), /[\x00-\x1f\x7f-\x9f]/);
+      }
       await writeFile(output, initial + '\rprogress 360/360\r\nDEMO_COMPLETE\r\n');
       await waitForText(/DEMO_COMPLETE/);
       assert.match(stripAnsi(h.instance.render(100).join('\n')), /progress 360\/360/);

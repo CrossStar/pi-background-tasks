@@ -5,7 +5,7 @@ mode: authored
 review_policy: behavioral
 stability: stable
 covers_surfaces: []
-covers_sources: [extensions/background-tasks.ts, src/core/completion-receipt.ts, src/core/update-check.ts, src/extension.ts, src/ui/background-tasks-manager.ts, src/ui/log-search.ts]
+covers_sources: [extensions/background-tasks.ts, src/core/completion-receipt.ts, src/core/update-check.ts, src/extension.ts, src/ui/background-tasks-manager.ts, src/ui/log-search.ts, src/ui/sanitize-display.ts]
 ---
 # Host UI and telemetry
 
@@ -59,7 +59,8 @@ Detail output semantics:
 - scrolling up pauses follow and freezes the buffer;
 - reaching the bottom or pressing `r` or `f` resumes follow;
 - normalizes CRLF newlines and displays the latest carriage-return (`\r`) frame on each line, so single-line progress bars such as tqdm refresh instead of concatenating old frames; a trailing CR retains the visible frame until replacement text arrives;
-- this is a log viewer, not a full terminal emulator: multi-row cursor movement is not interpreted;
+- this is a log viewer, not a full terminal emulator: cursor movement, erase commands, OSC/DCS payloads and other terminal controls are removed before layout; log ANSI styling is stripped, while the UI's own theme styling remains;
+- compact command previews and metadata are normalized to one physical row, including newline and tab whitespace, before measuring or truncating; full-command views retain explicit line breaks; original commands and log files remain unchanged for copying, rerunning and external viewing;
 - missing output files and read failures are displayed in the detail box.
 
 `v` opens a full-command view from either the list or detail. It wraps the complete command to terminal width, preserves explicit line breaks, and pages within the available height. Arrows and PgUp/PgDn scroll, Home/End jump, `y` copies the unchanged command, and Esc returns to the previous view without closing the monitor.

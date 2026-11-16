@@ -82,14 +82,15 @@
       "state": "stale-authored-prose"
     },
     {
-      "authored_body_sha256": "sha256:5af566edae4ab83155a6a9c7d3006ad776ee1192657db09e924b1787629867a4",
+      "authored_body_sha256": "sha256:7996ae9b6ed3e4c73abd49b0a6ad13ea69a4d2861c034572cb155a67a4a2cb80",
       "covers_sources": [
         "extensions/background-tasks.ts",
         "src/core/completion-receipt.ts",
         "src/core/update-check.ts",
         "src/extension.ts",
         "src/ui/background-tasks-manager.ts",
-        "src/ui/log-search.ts"
+        "src/ui/log-search.ts",
+        "src/ui/sanitize-display.ts"
       ],
       "doc_id": "subsystems/host-ui-and-telemetry",
       "rel": "docs/subsystems/host-ui-and-telemetry.md",
@@ -464,7 +465,8 @@
         "src/core/update-check.ts",
         "src/extension.ts",
         "src/ui/background-tasks-manager.ts",
-        "src/ui/log-search.ts"
+        "src/ui/log-search.ts",
+        "src/ui/sanitize-display.ts"
       ],
       "covers_surfaces": [],
       "mode": "authored",
@@ -1102,6 +1104,9 @@
       "subsystems/host-ui-and-telemetry"
     ],
     "src/ui/log-search.ts": [
+      "subsystems/host-ui-and-telemetry"
+    ],
+    "src/ui/sanitize-display.ts": [
       "subsystems/host-ui-and-telemetry"
     ]
   },

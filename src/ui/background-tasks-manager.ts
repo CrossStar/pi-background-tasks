@@ -1,3 +1,4 @@
+import { sanitizeDisplay } from './sanitize-display.ts';
 import { existsSync } from 'node:fs';
 import { open, stat } from 'node:fs/promises';
 import { searchLog } from './log-search.ts';
@@ -6,7 +7,7 @@ import { formatSize } from '@earendil-works/pi-coding-agent';
 import {
   Input,
   matchesKey,
-  truncateToWidth,
+  truncateToWidth as tuiTruncateToWidth,
   visibleWidth,
   wrapTextWithAnsi,
   type Component,
@@ -39,6 +40,11 @@ const DETAIL_VISIBLE_OUTPUT_LINES = 12;
 const LIGHT_BLUE_BORDER = '\x1b[38;2;83;160;215m';
 const ANSI_RESET = '\x1b[0m';
 
+// All width calculations must see physical rows, including composed themed text.
+function truncateToWidth(text: string, width: number): string {
+  return tuiTruncateToWidth(sanitizeDisplay(text, true), width);
+}
+
 function formatOutputAge(timestamp: number): string {
   const elapsed = Math.max(0, Date.now() - timestamp);
   return elapsed < 1000 ? '0s' : formatDuration(elapsed);
@@ -66,13 +72,13 @@ function formatPidText(pid: BgTask['pid']): string {
 
 /** Render carriage-return progress frames without concatenating stale updates. */
 function toOutputLines(content: string): string[] {
-  return content
+  return sanitizeDisplay(content, false, true)
     .replace(/\r\n/g, '\n')
     .split('\n')
     .map((line) => {
       // A trailing CR only moves the cursor; keep the last frame until new text arrives.
       const frames = line.replace(/\r$/, '').split('\r');
-      return frames[frames.length - 1] ?? '';
+      return sanitizeDisplay(frames[frames.length - 1] ?? '');
     })
     .filter((line, index, array) => line.length > 0 || index < array.length - 1);
 }
@@ -135,7 +141,7 @@ function formatToolDetail(task: BgTask): string {
   const byName = Object.entries(usage.byName)
     .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
     .slice(0, 6)
-    .map(([name, count]) => `${name} ${formatCount(count)}`);
+    .map(([name, count]) => `${sanitizeDisplay(name)} ${formatCount(count)}`);
   const parts = [`${formatCount(usage.total)} total`];
   if (usage.failed > 0) parts.push(`${formatCount(usage.failed)} failed`);
   parts.push(...byName);
@@ -144,7 +150,7 @@ function formatToolDetail(task: BgTask): string {
 
 function formatModelDetail(task: BgTask): string {
   if (!task.model) return 'not reported by this background task';
-  return task.model;
+  return sanitizeDisplay(task.model);
 }
 
 function sortTasksForUi(tasks: BgTask[]): BgTask[] {
@@ -387,7 +393,7 @@ export class BackgroundTasksManager implements Component {
   private renderCommand(width: number): string[] {
     const task = this.commandTask;
     if (!task) return this.renderList(width);
-    const lines = task.command.split('\n').flatMap((line) => wrapTextWithAnsi(line || ' ', Math.max(1, width - 4)));
+    const lines = sanitizeDisplay(task.command, false, true).split('\n').flatMap((line) => wrapTextWithAnsi(sanitizeDisplay(line) || ' ', Math.max(1, width - 4)));
     this.commandLineCount = lines.length;
     this.commandScroll = Math.min(this.commandScroll, Math.max(0, lines.length - this.commandRows));
     const end = Math.min(lines.length, this.commandScroll + this.commandRows);
@@ -790,15 +796,15 @@ export class BackgroundTasksManager implements Component {
     const changed = this.outputMtime === undefined ? 'output time unavailable'
       : `last output ${formatOutputAge(this.outputMtime)} ago`;
     const lines = [
-      ` ${taskDisplayName(task)}`,
+      ` ${sanitizeDisplay(taskDisplayName(task))}`,
       ` ${statusLabel(task.status)}${formatExitCodeText(task.exitCode)} · ${taskAge(task)}${formatPidText(task.pid)}`,
       ` ${formatSize(task.bytesWritten)} · ${changed}`,
-      ` ${task.command}`,
+      ` ${sanitizeDisplay(task.command)}`,
     ];
-    if (task.error) lines.push(this.theme.fg('error', ` Error: ${task.error}`));
+    if (task.error) lines.push(this.theme.fg('error', ` Error: ${sanitizeDisplay(task.error)}`));
     this.previewLogTop = lines.length + 1;
     lines.push(...this.renderOutputBox(Math.max(4, width - 2)));
-    if (this.searchMessage) lines.push(` ${this.searchMessage}`);
+    if (this.searchMessage) lines.push(` ${sanitizeDisplay(this.searchMessage)}`);
     return lines;
   }
 
@@ -829,9 +835,9 @@ export class BackgroundTasksManager implements Component {
     const bottom = blueBorder(`╰${'─'.repeat(inner)}╯`);
     const row = (content = '') =>
       `${blueBorder('│')}${padAnsi(truncateToWidth(content, inner), inner)}${blueBorder('│')}`;
-    const header = this.theme.fg('accent', padAnsi(` ${title}`, inner));
+    const header = this.theme.fg('accent', padAnsi(sanitizeDisplay(` ${title}`), inner));
     const subtitleLine = subtitle
-      ? this.theme.fg('accent', padAnsi(` ${subtitle}`, inner))
+      ? this.theme.fg('accent', padAnsi(sanitizeDisplay(` ${subtitle}`), inner))
       : ' '.repeat(inner);
     const lines = [top, row(header), row(subtitleLine), row()];
     const bodyLimit = this.options.getHeight ? Math.max(1, this.options.getHeight() - 7) : body.length;
@@ -902,7 +908,7 @@ export class BackgroundTasksManager implements Component {
         const pointer = selected ? '›' : ' ';
         const unseen = task.status !== 'running' && !this.options.isSeen(task.id);
         const unreadMark = unseen ? this.theme.fg('warning', '●') : ' ';
-        const rawName = truncateChars(taskDisplayName(task), maxNameWidth);
+        const rawName = truncateChars(sanitizeDisplay(taskDisplayName(task)), maxNameWidth);
         const name =
           task.status === 'failed'
             ? this.theme.fg('error', rawName)
@@ -921,7 +927,7 @@ export class BackgroundTasksManager implements Component {
         const activityText = activity ? ` ${this.theme.fg('warning', activity)}` : '';
         const exit =
           task.status !== 'running' ? this.theme.fg('dim', formatExitCodeText(task.exitCode)) : '';
-        let row = ` ${pointer} ${unreadMark} ${name} ${this.theme.fg('dim', task.id)} ${this.theme.fg('dim', '·')} ${status}${exit} ${this.theme.fg('dim', `${runtime} ${size} ${outputAge}`)}${activityText}`;
+        let row = ` ${pointer} ${unreadMark} ${name} ${this.theme.fg('dim', sanitizeDisplay(task.id))} ${this.theme.fg('dim', '·')} ${status}${exit} ${this.theme.fg('dim', `${runtime} ${size} ${outputAge}`)}${activityText}`;
         if (selected) row = this.theme.fg('accent', padAnsi(truncateToWidth(row, width - 4), width - 4));
         body.push(row);
       }
@@ -954,7 +960,7 @@ export class BackgroundTasksManager implements Component {
       body.push(this.theme.fg('dim', ' ── Output preview ──'), ...preview);
     }
     if (this.searchInput) body.push(...this.searchInput.render(Math.max(1, width - 4)));
-    if (this.actionMessage) body.push(this.theme.fg('warning', `  ${this.actionMessage}`));
+    if (this.actionMessage) body.push(this.theme.fg('warning', `  ${sanitizeDisplay(this.actionMessage)}`));
     body.push(this.theme.fg('dim', ' 1 running · 2 all · 3 failed · v full command · / search · y copy · p path · o open'));
     return this.frame(
       'bg tasks focused',
@@ -971,36 +977,36 @@ export class BackgroundTasksManager implements Component {
       this.mode = 'list';
       return this.renderList(width);
     }
-    const name = taskDisplayName(task);
+    const name = sanitizeDisplay(taskDisplayName(task));
     const status = statusColor(this.theme, task.status);
     const exit = formatExitCodeText(task.exitCode);
     const body: string[] = [
       ` ${this.theme.fg('toolTitle', 'Name:')} ${this.theme.fg('accent', name)}`,
-      ` ${this.theme.fg('toolTitle', 'ID:')} ${this.theme.fg('accent', task.id)}`,
+      ` ${this.theme.fg('toolTitle', 'ID:')} ${this.theme.fg('accent', sanitizeDisplay(task.id))}`,
       ` ${this.theme.fg('toolTitle', 'Status:')} ${status}${this.theme.fg('dim', exit)}`,
       ` ${this.theme.fg('toolTitle', 'Runtime:')} ${taskAge(task)}${this.theme.fg('dim', formatPidText(task.pid))}`,
       ` ${this.theme.fg('toolTitle', 'Started:')} ${formatTime(task.startTime)}${task.endTime ? this.theme.fg('dim', ` · ended ${formatTime(task.endTime)}`) : ''}`,
-      ` ${this.theme.fg('toolTitle', 'Output:')} ${this.theme.fg('accent', task.outputPath)}`,
+      ` ${this.theme.fg('toolTitle', 'Output:')} ${this.theme.fg('accent', sanitizeDisplay(task.outputPath))}`,
     ];
     if (task.description && compactWhitespace(task.description) !== compactWhitespace(name)) {
       body.push(
-        ` ${this.theme.fg('toolTitle', 'Description:')} ${truncateToWidth(task.description, width - 16)}`,
+        ` ${this.theme.fg('toolTitle', 'Description:')} ${truncateToWidth(sanitizeDisplay(task.description), width - 16)}`,
       );
     }
 
     body.push(
-      ` ${this.theme.fg('toolTitle', 'Command:')} ${truncateToWidth(task.command, width - 13)}`,
+      ` ${this.theme.fg('toolTitle', 'Command:')} ${truncateToWidth(sanitizeDisplay(task.command), width - 13)}`,
     );
     if (this.options.getHeight) {
       body.splice(0, body.length,
         ` ${name} · ${status}${exit} · ${taskAge(task)}${formatPidText(task.pid)}`,
-        ` ${task.outputPath}`,
-        ` ${task.command}`,
+        ` ${sanitizeDisplay(task.outputPath)}`,
+        ` ${sanitizeDisplay(task.command)}`,
       );
     }
     if (task.execution?.kind === 'external') {
-      body.push(` Backend: ${task.execution.id}`);
-      body.push(` Execution cwd: ${task.execution.cwd ?? 'owned by provider (legacy contract)'}`);
+      body.push(` Backend: ${sanitizeDisplay(task.execution.id)}`);
+      body.push(` Execution cwd: ${sanitizeDisplay(task.execution.cwd ?? 'owned by provider (legacy contract)')}`);
     }
     if (task.isAgent) {
       if (task.model) body.push(` Model: ${formatModelDetail(task)}`);
@@ -1008,15 +1014,15 @@ export class BackgroundTasksManager implements Component {
       if (task.tokenUsage && task.tokenUsage.totalTokens > 0) body.push(` Tokens: ${formatTokenDetail(task)}`);
       if (task.toolUsage && (task.toolUsage.total > 0 || task.toolUsage.failed > 0)) body.push(` Tools: ${formatToolDetail(task)}`);
     }
-    if (task.error) body.push(` ${this.theme.fg('error', `Error: ${task.error}`)}`);
+    if (task.error) body.push(` ${this.theme.fg('error', `Error: ${sanitizeDisplay(task.error)}`)}`);
     body.push('', ` ${this.theme.fg('toolTitle', 'Output tail:')}`);
     this.logBounds = { x: 3, y: 5 + body.length, width: Math.max(0, width - 6), height: this.outputRows };
     body.push(...this.renderOutputBox(width - 4));
-    if (this.searchMessage) body.push(` ${this.searchMessage}`);
+    if (this.searchMessage) body.push(` ${sanitizeDisplay(this.searchMessage)}`);
     if (this.searchInput) body.push(...this.searchInput.render(Math.max(1, width - 4)));
-    if (this.actionMessage) body.push(this.theme.fg('warning', ` ${this.actionMessage}`));
+    if (this.actionMessage) body.push(this.theme.fg('warning', ` ${sanitizeDisplay(this.actionMessage)}`));
     body.push(' v full command · / search · n/N match · f follow · y copy · p path · o open');
-    const subtitle = `${task.id} · ${task.status === 'running' ? 'live tail refreshes every second' : 'final output'}`;
+    const subtitle = `${sanitizeDisplay(task.id)} · ${task.status === 'running' ? 'live tail refreshes every second' : 'final output'}`;
     const footer = ` ${this.theme.fg('dim', '↑/↓ scroll · ← list · r refresh · k stop · R rerun · c path · x close')}`;
     return this.frame(`bg: ${truncateChars(name, 64)}`, subtitle, body, footer, width);
   }
@@ -1029,14 +1035,14 @@ export class BackgroundTasksManager implements Component {
       ` ${blueBorder('│')}${padAnsi(truncateToWidth(content, inner), inner)}${blueBorder('│')}`;
     const lines = [top];
     if (this.tailError) {
-      lines.push(row(this.theme.fg('error', this.tailError)));
+      lines.push(row(this.theme.fg('error', sanitizeDisplay(this.tailError))));
     } else if (this.detailLines.length === 0) {
       lines.push(row(this.theme.fg('dim', 'No output yet')));
     } else {
       const maxTop = Math.max(0, this.detailLines.length - this.outputRows);
       const start = this.detailFollow ? maxTop : Math.min(this.detailScrollTop, maxTop);
       const windowLines = this.detailLines.slice(start, start + this.outputRows);
-      for (const line of windowLines) lines.push(row(this.theme.fg('toolOutput', line)));
+      for (const line of windowLines) lines.push(row(this.theme.fg('toolOutput', sanitizeDisplay(line))));
     }
     while (lines.length < this.outputRows + 1) lines.push(row());
     lines.push(bottom);

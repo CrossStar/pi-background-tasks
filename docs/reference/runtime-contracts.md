@@ -46,10 +46,10 @@ This generated registry lists production environment-variable references, runtim
 
 | Kind | Path/artifact | Provenance |
 | --- | --- | --- |
-| directory | `.pi/tasks/<session-id>-<pid>/` | `src/core/registry.ts:964` |
+| directory | `.pi/tasks/<session-id>-<pid>/` | `src/core/registry.ts:962` |
 | task-file | `.pi/tasks/<session-id>-<pid>/<task-id>.attestation.json` | `src/core/attested-pi-run.ts:592` |
-| task-file | `.pi/tasks/<session-id>-<pid>/<task-id>.json` | `src/core/registry.ts:1181` |
-| task-file | `.pi/tasks/<session-id>-<pid>/<task-id>.output` | `src/core/registry.ts:1242` |
+| task-file | `.pi/tasks/<session-id>-<pid>/<task-id>.json` | `src/core/registry.ts:1179` |
+| task-file | `.pi/tasks/<session-id>-<pid>/<task-id>.output` | `src/core/registry.ts:1240` |
 | task-file | `.pi/tasks/<session-id>-<pid>/<task-id>.pi-events.jsonl` | `src/core/attested-pi-run.ts:589` |
 | task-file | `.pi/tasks/<session-id>-<pid>/<task-id>.pi-telemetry-wrapper.cjs` | `src/core/attested-pi-run.ts:591` |
 | task-file | `.pi/tasks/<session-id>-<pid>/<task-id>.stderr` | `src/core/attested-pi-run.ts:590` |

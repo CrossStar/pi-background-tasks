@@ -27,7 +27,7 @@ Missing records, ENOENT, disconnections and transient query failures never autom
 
 ## Errors
 
-An unknown or partial ID, foreign owner, unsupported execution type, or failure to persist the local exclusion is reported explicitly. If persistence fails, monitoring remains in place. An admission still awaiting its first confirmed remote record cannot be forgotten, because its provisional timestamp is not a reliable task identity. For monitors retained from older extension versions, the command validates identity against existing local cached metadata; missing or mismatched metadata is reported without contacting SSH.
+An unknown or partial ID, foreign owner, unsupported execution type, or failure to persist the local exclusion is reported explicitly. If persistence fails, monitoring remains in place. An admission still awaiting its first confirmed remote record cannot be forgotten, because its provisional timestamp is not a reliable task identity. For monitors retained from older extension versions, the command uses the validated in-memory monitor and captured client identity. Neither the remote `record.json` nor local `.output.json` is required. The exclusion retains the exact in-memory start timestamp; it is not an ID-wide exclusion and does not suppress a subsequently discovered task with a different timestamp. It does not recreate missing metadata.
 
 ## Loading the feature
 

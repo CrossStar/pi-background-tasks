@@ -927,13 +927,11 @@ export class BackgroundTaskRegistry {
     const localCwd = resolve(ctx.cwd);
     const expectedRoot = join(localCwd, '.pi', 'tasks', 'remote', createHash('sha256').update(JSON.stringify([client.id, client.cwd, owner])).digest('hex'));
     if (resolve(root) !== expectedRoot || dirname(task.outputAbsPath) !== root) throw new Error('Background registry cache identity mismatch');
-    if (!monitorState.confirmed.has(task)) {
-      let cached: unknown;
-      try { cached = JSON.parse(await readFile(join(root, `${task.id}.output.json`), 'utf8')); }
-      catch { throw new Error('Remote admission identity cannot be confirmed from local metadata; monitor retained'); }
-      if (!isJsonObject(cached) || cached['id'] !== task.id || cached['ownerSession'] !== owner || cached['startTime'] !== task.startTime || !isJsonObject(cached['execution']) || cached['execution']['id'] !== client.id || cached['execution']['cwd'] !== client.cwd)
-        throw new Error('Remote admission identity cannot be confirmed from local metadata; monitor retained');
-      monitorState.confirmed.add(task);
+    // Forget identifies the retained monitor, not a remote process. Its captured
+    // identity is sufficient even when both remote and cached metadata are gone.
+    // Never broaden the exclusion to other incarnations sharing the same ID.
+    if (!/^[\w-]{1,100}$/.test(task.id) || !Number.isFinite(task.startTime)) {
+      throw new Error('Captured remote monitor incarnation is invalid');
     }
     await monitorExclusion(root, localCwd, owner, task.execution.id, client.cwd, task.id, task.startTime).persist();
     if (this.tasks.get(task.id) === task) {

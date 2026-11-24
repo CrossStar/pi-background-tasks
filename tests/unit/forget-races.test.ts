@@ -73,6 +73,58 @@ test('persist failure retains monitor; reload replaces old method and forgets of
   } finally { registry.detachHost(); releaseProcessRegistry(ctx, registry); await rm(cwd, { recursive: true, force: true }); }
 });
 
+test('legacy monitor forgets offline after remote record and local metadata disappear', async () => {
+  const cwd = await mkdtemp(join(tmpdir(), 'forget-missing-legacy-'));
+  const ctx = { cwd, sessionId: 'owner', modelRegistry: { getAll: () => [] } };
+  let connected = true;
+  let missing = false;
+  let calls = 0;
+  let current = record('legacy-one');
+  const provider = { id: 'ssh', cwd: '/remote', spawn() { throw Error('spawn'); }, persistent: {
+    async list() { calls++; return Object.assign([current], { diagnostics: [] }); },
+    async get() { calls++; if (missing) throw Object.assign(Error('remote record missing'), { code: 'ENOENT' }); return current; },
+    async start() { calls++; throw Error('start'); },
+    async cancel() { calls++; throw Error('cancel'); },
+    async logs() { calls++; throw Error('logs'); },
+  } };
+  const make = () => new BackgroundTaskRegistry({ resolveExecution: () => connected ? provider : undefined, sendCompletionNotification() { throw Error('notify'); } });
+  const registry = make();
+  const fresh = make();
+  try {
+    await registry.restoreRemoteTasks(ctx);
+    const task = registry.allTasks()[0]!;
+    await task.metadataWriteChain;
+    // Older module instances retained captured clients but had no global confirmation membership.
+    const state: unknown = Reflect.get(process, Symbol.for('pi-background-tasks.monitor-state.v1'));
+    if (typeof state === 'object' && state !== null) {
+      const confirmed: unknown = Reflect.get(state, 'confirmed');
+      if (confirmed instanceof WeakSet) confirmed.delete(task);
+    }
+    await rm(task.metadataAbsPath);
+    await writeFile(task.outputAbsPath, 'cached legacy output\n');
+    const clients: unknown = Reflect.get(registry, 'taskClients');
+    assert.ok(clients instanceof WeakMap);
+    missing = true;
+    await assert.rejects(clients.get(task).get(task.id), { code: 'ENOENT' });
+    assert.equal(registry.allTasks()[0], task);
+    connected = false;
+    const before = calls;
+    await registry.forgetTask(ctx, task.id);
+    assert.equal(calls, before, 'offline forget must use only the captured identity');
+    assert.equal(registry.allTasks().length, 0);
+    assert.equal(task.status, 'running');
+    assert.equal(await readFile(task.outputAbsPath, 'utf8'), 'cached legacy output\n');
+    connected = true;
+    missing = false;
+    await fresh.restoreRemoteTasks(ctx);
+    assert.equal(fresh.allTasks().length, 0, 'same identity and timestamp remain excluded');
+    current = { ...current, startedAt: current.startedAt + 1 };
+    await fresh.restoreRemoteTasks(ctx);
+    assert.equal(fresh.allTasks().length, 1, 'same ID with another timestamp must restore');
+    await fresh.allTasks()[0]!.metadataWriteChain;
+  } finally { registry.detachHost(); fresh.detachHost(); await rm(cwd, { recursive: true, force: true }); }
+});
+
 test('forget rejects unconfirmed admission without backend calls', async () => {
   const cwd = await mkdtemp(join(tmpdir(), 'forget-admission-'));
   const response = deferred<TaskRecord>();

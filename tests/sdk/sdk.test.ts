@@ -1,3 +1,4 @@
+import { cleanupServiceRoot } from '../helpers/service-cleanup.mjs';
 import type { TaskRecord, TaskList } from '../../src/persistent/client.js';
 import type { PersistentRemoteStart } from '../../src/core/execution-backend.js';
 import { EventEmitter } from 'node:events';
@@ -39,14 +40,7 @@ import { parsePackageInfo } from '../../src/core/update-check.js';
 
 const sdkServiceRoot = await mkdtemp(join(tmpdir(), 'pi-bg-sdk-service-'));
 process.env['PI_BG_SERVICE_DIR'] = sdkServiceRoot;
-after(async () => {
-  const { rpc, endpoint } = await import('../../src/persistent/shared.mjs');
-  try {
-    const identity = await rpc(endpoint('daemon', sdkServiceRoot), 'ping', {}, sdkServiceRoot) as { pid: number; startToken: string };
-    const confirmed = await rpc(endpoint('daemon', sdkServiceRoot), 'ping', {}, sdkServiceRoot) as { pid: number; startToken: string };
-    if (identity.pid === confirmed.pid && identity.startToken && identity.startToken === confirmed.startToken) process.kill(identity.pid, 'SIGTERM');
-  } catch { /* No daemon was started, or it already exited. */ }
-});
+after(() => cleanupServiceRoot(sdkServiceRoot));
 const extensionPath = resolve('extensions/background-tasks.ts');
 const scriptedProviderPath = resolve('tests/scripted-provider/scripted-provider-extension.ts');
 const roots: string[] = [];

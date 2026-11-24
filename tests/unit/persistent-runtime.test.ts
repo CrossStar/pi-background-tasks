@@ -1,3 +1,4 @@
+import {guardServiceRoot} from '../helpers/service-cleanup.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -5,8 +6,27 @@ import os from 'node:os';
 import path from 'node:path';
 import net from 'node:net';
 import { spawn } from 'node:child_process';
-test('scoped client rejects old daemon without sending operations or replacing it', async () => {
+test('local concurrent ensures replace a verified protocol-1 daemon', {timeout:20000}, async t => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'pi-local-upgrade-'));
+    guardServiceRoot(t, root);
+    fs.writeFileSync(path.join(root,'shared.mjs'),fs.readFileSync(new URL('../../src/persistent/shared.mjs',import.meta.url),'utf8').replace('request.version !== 2','request.version !== 1'));
+    fs.writeFileSync(path.join(root,'daemon.mjs'),"import {server,endpoint} from './shared.mjs'; server(()=>({pid:process.pid,startToken:'old',protocolVersion:1})).listen(endpoint('daemon'),()=>console.log('ready'));");
+    const old = spawn(process.execPath,[path.join(root,'daemon.mjs')],{env:{...process.env,PI_BG_SERVICE_DIR:root},stdio:['ignore','pipe','ignore']});
+    await new Promise<void>(resolve=>old.stdout.once('data',()=>resolve()));
+    const {createClient} = await import('../../src/persistent/client.js');
+    const {rpc,endpoint} = await import('../../src/persistent/shared.mjs');
+    try {
+        const attempts = await Promise.allSettled(Array.from({length:4},()=>createClient({root}).ensureService()));
+        for (const result of attempts) if (result.status === 'rejected') throw result.reason;
+        const identity = await rpc(endpoint('daemon',root),'ping',{},root) as {pid:number;protocolVersion:number};
+        assert.notEqual(identity.pid,old.pid); assert.equal(identity.protocolVersion,2);
+    } finally {
+        // The root guard catches detached concurrent starters as well as the answering daemon.
+    }
+});
+test('scoped client rejects old daemon without sending operations or replacing it', async t => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'pi-old-'));
+    guardServiceRoot(t, root);
     const {endpoint} = await import('../../src/persistent/shared.mjs');
     const {createClient} = await import('../../src/persistent/client.js');
     const methods: string[] = [];
@@ -29,11 +49,11 @@ test('scoped client rejects old daemon without sending operations or replacing i
         assert.ok(service.listening);
     } finally {
         await new Promise<void>(resolve=>service.close(()=>resolve()));
-        fs.rmSync(root,{recursive:true,force:true});
     }
 });
-test('durable supervisors survive daemon restart and deduplicate admission', async () => {
+test('durable supervisors survive daemon restart and deduplicate admission', async t => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'pi-persist-'));
+    guardServiceRoot(t, root);
     const client = (await import('../../src/persistent/client.js')).createClient({ root });
     const { rpc, endpoint } = await import('../../src/persistent/shared.mjs');
     await client.ensureService();
@@ -43,6 +63,7 @@ test('durable supervisors survive daemon restart and deduplicate admission', asy
     let daemon = await daemonPid();
     const wait = async (id: string) => { for (let i = 0; i < 200; i++) {
         const r = await client.get(id);
+        assert.ok(r);
         if (r.diagnostic?.startsWith('unknown'))
             throw Error(r.diagnostic);
         if (r.status !== 'running')
@@ -65,12 +86,21 @@ test('durable supervisors survive daemon restart and deduplicate admission', asy
         await assert.rejects(client.get('once','B'),/ownership mismatch/);
         await assert.rejects(client.cancel('once','B'),/ownership mismatch/);
         await assert.rejects(client.list(root,''),/Invalid ownerSession/);
-        assert.equal((await client.get('once','A')).id,'once');
+        assert.equal((await client.get('once','A'))?.id,'once');
         assert.equal((await client.list(root,'A')).length,1);
         assert.equal((await client.list(root,'B')).length,0);
         assert.equal((await client.start(request)).exitCode, 7);
         assert.equal((await client.cancel('once')).status,'failed');
         assert.equal((await client.cancel('once')).exitCode,7);
+        const legacyDir = path.join(root,'tasks','legacy-owned');
+        fs.mkdirSync(legacyDir);
+        const legacy = JSON.stringify({id:'legacy-owned',ownerSession:'A',status:'running',sources:[{pattern:'**'}]});
+        fs.writeFileSync(path.join(legacyDir,'record.json'),legacy);
+        fs.writeFileSync(path.join(legacyDir,'sources.json'),'{invalid');
+        assert.equal(await client.get('legacy-owned','A'),null);
+        assert.equal(await client.get('legacy-owned','B'),null);
+        assert.ok(!(await client.list(root,'A')).some(row=>row.id==='legacy-owned'));
+        assert.equal(fs.readFileSync(path.join(legacyDir,'record.json'),'utf8'),legacy);
         fs.mkdirSync(path.join(root,'tasks','interrupted'));
         fs.mkdirSync(path.join(root,'tasks','corrupt'));
         fs.writeFileSync(path.join(root,'tasks','corrupt','record.json'),'{bad json');
@@ -110,9 +140,11 @@ test('durable supervisors survive daemon restart and deduplicate admission', asy
             try {
                 await client.cancel(treeId);
                 let terminal=await client.get(treeId);
+                assert.ok(terminal);
                 for(let i=0;i<160&&terminal.status==='running';i++) {
                     await new Promise(resolve=>setTimeout(resolve,25));
                     terminal=await client.get(treeId);
+                    assert.ok(terminal);
                 }
                 assert.notEqual(terminal.status,'running');
                 assert.ok(terminal.status==='killed'||(terminal.status==='failed'&&terminal.diagnostic?.startsWith('unknown:')));
@@ -142,16 +174,6 @@ test('durable supervisors survive daemon restart and deduplicate admission', asy
         }
     }
     finally {
-        await client.ensureService();
-        daemon = await daemonPid();
-        for (const task of await client.list(root)) {
-            if (task.status === 'running') {
-                await client.cancel(task.id);
-                await wait(task.id);
-            }
-        }
-        process.kill(daemon, 'SIGTERM');
-        await new Promise(r => setTimeout(r, 200));
-        fs.rmSync(root, { recursive: true, force: true });
+        // Cleanup uses /proc identity, never an ensure call that could start another daemon.
     }
 });

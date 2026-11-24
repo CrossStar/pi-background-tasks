@@ -5,8 +5,8 @@ import path from 'node:path';
 import os from 'node:os';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-process.env.PI_BG_SERVICE_DIR ||= path.join(os.homedir(), '.pi/background-tasks-remote-v2');
-const { root, endpoint, rpc, MAX_FRAME } = await import('./shared.mjs');
+process.env.PI_BG_SERVICE_DIR ||= path.join(os.homedir(), '.pi/background-tasks-remote');
+const { root, endpoint, rpc, MAX_FRAME, replaceLegacyDaemon } = await import('./shared.mjs');
 let request;
 const finish = value => process.stdout.write(JSON.stringify(value) + '\n', () => process.exit(0));
 const deadline = setTimeout(() => finish({ ok: false, error: { message: 'Bridge timeout; task admission may have succeeded', ...(request?.method === 'start' ? { taskId: request.params?.id } : {}) } }), 20000);
@@ -33,7 +33,7 @@ async function ensure(ownerSession) {
             daemonProtocolVersion: 2, runtime: { node: process.version, platform: process.platform, arch: process.arch }, serviceRoot: root };
     };
     try { return await ping(); } catch (error) {
-        if (!['ECONNREFUSED', 'ENOENT'].includes(error.code)) throw error;
+        if (!['ECONNREFUSED', 'ENOENT', 'ECONNRESET', 'EPIPE'].includes(error.code) && error.message !== 'RPC disconnected') await replaceLegacyDaemon(root, error);
     }
     const child = spawn(process.execPath, [fileURLToPath(new URL('./daemon.mjs', import.meta.url))], {
         windowsHide: true, detached: true, stdio: 'ignore', env: process.env,
@@ -44,7 +44,7 @@ async function ensure(ownerSession) {
     for (let attempt = 0; attempt < 50; attempt++) {
         if (failure) throw failure;
         try { return await ping(); } catch (error) {
-            if (!['ECONNREFUSED', 'ENOENT'].includes(error.code)) throw error;
+            if (!['ECONNREFUSED', 'ENOENT', 'ECONNRESET', 'EPIPE'].includes(error.code) && error.message !== 'RPC disconnected') await replaceLegacyDaemon(root, error);
         }
         await new Promise(resolve => setTimeout(resolve, 50));
     }

@@ -1,3 +1,4 @@
+import {guardServiceRoot} from '../helpers/service-cleanup.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -7,8 +8,9 @@ import net from 'node:net';
 import { endpoint } from '../../src/persistent/shared.mjs';
 import { spawn } from 'node:child_process';
 const bridge = new URL('../../src/persistent/remote-bridge.mjs', import.meta.url);
-test('remote bridge rejects a daemon without ownership capability before scoped operations', async () => {
+test('remote bridge rejects a daemon without ownership capability before scoped operations', async t => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'bridge-old-'));
+    guardServiceRoot(t, root);
     const methods = [];
     const service = net.createServer(socket => {
         let text = '';
@@ -37,11 +39,11 @@ test('remote bridge rejects a daemon without ownership capability before scoped 
         assert.ok(service.listening);
     } finally {
         await new Promise(resolve=>service.close(resolve));
-        fs.rmSync(root,{recursive:true,force:true});
     }
 });
-test('remote bridge survives separate transports and preserves byte offsets', { timeout: 30000 }, async () => {
+test('remote bridge survives separate transports and preserves byte offsets', { timeout: 30000 }, async t => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'bridge-'));
+    guardServiceRoot(t, root);
     function call(request, raw = false) {
         return new Promise((resolve, reject) => {
             const child = spawn(process.execPath, [bridge.pathname], { env: { ...process.env, PI_BG_SERVICE_DIR: root }, stdio: ['pipe', 'pipe', 'pipe'] });
@@ -116,8 +118,6 @@ test('remote bridge survives separate transports and preserves byte offsets', { 
         assert.equal((await call(start)).result.status, 'killed');
         assert.equal(fs.readFileSync(path.join(root, 'marker'), 'utf8'), 'x');
     } finally {
-        await call({ op: 'cancel', id: 'once' });
-        if (pid) process.kill(pid, 'SIGTERM');
-        fs.rmSync(root, { recursive: true, force: true });
+        // The root after-hook owns process termination and directory removal.
     }
 });

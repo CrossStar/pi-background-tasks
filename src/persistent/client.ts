@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
-import { rpc, endpoint, serviceRoot, privateDir } from './shared.mjs';
+import { rpc, endpoint, serviceRoot, privateDir, replaceLegacyDaemon } from './shared.mjs';
 export interface LogSource {
     id: string; label: string; kind: 'stdout' | 'stderr' | 'file' | 'digest';
     location: 'local' | 'remote'; path: string; pattern?: string;
@@ -91,7 +91,7 @@ export function createClient(options: {
             if (identity.protocolVersion !== 2) throw Error('Unsupported persistent protocol; v2 required');
             return;
         }
-        catch (error) { if (!['ECONNREFUSED', 'ENOENT'].includes((error as NodeJS.ErrnoException).code ?? '')) throw error; }
+        catch (error) { if (!['ECONNREFUSED', 'ENOENT', 'ECONNRESET', 'EPIPE'].includes((error as NodeJS.ErrnoException).code ?? '') && (error as Error).message !== 'RPC disconnected') await replaceLegacyDaemon(root, error); }
         const child = spawn(process.execPath, [fileURLToPath(new URL('./daemon.mjs', import.meta.url))], {
             windowsHide: true, detached: true, stdio: 'ignore', env: { ...process.env, PI_BG_SERVICE_DIR: root },
         });
@@ -122,7 +122,7 @@ export function createClient(options: {
             return await call('logs', {id, offset, maxBytes, ownerSession, source}) as {data: string; nextOffset: number; size: number; eof: boolean; identity: string; cachedAt: number};
         },
         async start(request: StartRequest) { return validateRecord(await call('start', request), root, request.slurm ? undefined : request.id, request.ownerSession); },
-        async get(id: string, ownerSession?: string) { return validateRecord(await call('get', { id, ownerSession }), root, id, ownerSession); },
+        async get(id: string, ownerSession?: string) { const value = await call('get', { id, ownerSession }); return value === null ? null : validateRecord(value, root, id, ownerSession); },
         async cancel(id: string, ownerSession?: string) { return validateRecord(await call('cancel', { id, ownerSession }), root, id, ownerSession); },
         async list(cwd?: string, ownerSession?: string) {
             const records: TaskList = Object.assign([] as TaskRecord[], {diagnostics: [] as AdmissionDiagnostic[]});
@@ -145,6 +145,6 @@ export function createClient(options: {
 }
 export function ensureService(): Promise<void> { return createClient().ensureService(); }
 export function start(request: StartRequest): Promise<TaskRecord> { return createClient().start(request); }
-export function get(id: string, ownerSession?: string): Promise<TaskRecord> { return createClient().get(id, ownerSession); }
+export function get(id: string, ownerSession?: string): Promise<TaskRecord | null> { return createClient().get(id, ownerSession); }
 export function list(cwd?: string, ownerSession?: string): Promise<TaskList> { return createClient().list(cwd, ownerSession); }
 export function cancel(id: string, ownerSession?: string): Promise<TaskRecord> { return createClient().cancel(id, ownerSession); }

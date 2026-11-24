@@ -71,7 +71,7 @@ Terminal delivery is eligible only after terminal metadata has been persisted an
 
 ## Reload handoff
 
-Protocol 2 uses a separate process-global registry key as well as separate disk service namespaces. The first reload from v1 does not inherit old-service monitors. Subsequent v2 reloads retain the same v2 registry normally.
+Protocol 2 retains a separate process-global registry key: a first reload from v1 must not inherit legacy monitors or their pending notifications, even though the disk root is unchanged. Subsequent v2 reloads retain the same registry normally.
 
 On `session_shutdown` with reason `reload`, the host detaches stale Pi callbacks without setting shutdown state or stopping tasks. Live child handles, timers, managed cancellation hooks, output streams, and task identity remain in the process-global registry. The replacement runtime acquires that registry during `session_start`, installs a fresh EventBus service, and rebinds callbacks before normal use. A task that reaches terminal state during the short detached interval keeps notification and terminal publication pending; rebinding retries those deliveries rather than marking them sent to a stale runtime.
 

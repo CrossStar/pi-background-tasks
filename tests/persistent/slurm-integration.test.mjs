@@ -1,3 +1,4 @@
+import {guardServiceRoot} from '../helpers/service-cleanup.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -6,8 +7,9 @@ import path from 'node:path';
 import {spawn, spawnSync} from 'node:child_process';
 import {watchSlurm} from '../../src/persistent/slurm-watch.mjs';
 
-test('v2 bridge attaches, deduplicates, restores ownership and stops only the monitor', {timeout: 30000}, async () => {
+test('v2 bridge attaches, deduplicates, restores ownership and stops only the monitor', {timeout: 30000}, async t => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'bg-slurm-e2e-'));
+    guardServiceRoot(t, root);
     const bin = path.join(root, 'bin'); fs.mkdirSync(bin);
     const commands = path.join(root, 'commands');
     for (const name of ['sacct', 'scontrol', 'scancel']) {
@@ -18,7 +20,7 @@ test('v2 bridge attaches, deduplicates, restores ownership and stops only the mo
     fs.mkdirSync(oldRoot, {recursive:true}); fs.writeFileSync(path.join(oldRoot,'sentinel'),'old service untouched');
     const env = {...process.env, HOME: root, PI_BG_SERVICE_DIR: '', PATH: bin + path.delimiter + process.env.PATH};
     const localRoot = spawnSync(process.execPath, ['--input-type=module', '-e', `import {serviceRoot} from ${JSON.stringify(new URL('../../src/persistent/shared.mjs', import.meta.url).href)}; console.log(serviceRoot());`], {env,encoding:'utf8'});
-    assert.equal(localRoot.status,0);assert.equal(localRoot.stdout.trim(),path.join(root,'.pi','background-tasks-v2'));
+    assert.equal(localRoot.status,0);assert.equal(localRoot.stdout.trim(),path.join(root,'.pi','background-tasks'));
     const call = (method, params = {}, serviceEnv = env) => new Promise((resolve, reject) => {
         const child = spawn(process.execPath, [new URL('../../src/persistent/remote-bridge.mjs', import.meta.url).pathname], {env: serviceEnv, stdio: ['pipe', 'pipe', 'pipe']});
         let text = ''; child.stdout.on('data', data => text += data); child.stderr.resume();
@@ -31,12 +33,18 @@ test('v2 bridge attaches, deduplicates, restores ownership and stops only the mo
     const secondEnv = {...env, PI_BG_SERVICE_DIR: path.join(root, 'other-endpoint')};
     try {
         const ready = await call('ensure'); pid = ready.pid;
-        assert.equal(ready.serviceRoot,path.join(root,'.pi','background-tasks-remote-v2'));
+        assert.equal(ready.serviceRoot,path.join(root,'.pi','background-tasks-remote'));
         assert.equal(fs.readFileSync(path.join(oldRoot,'sentinel'),'utf8'),'old service untouched');
         const request = {id: 'monitor-one', cwd: root, name: 'Slurm 42', command: 'slurm attach 42', ownerSession: 'owner', slurm: {jobId: '42', logs: {files: [logfile]}}};
         fs.mkdirSync(path.join(ready.serviceRoot,'tasks','corrupt'));
         fs.writeFileSync(path.join(ready.serviceRoot,'tasks','corrupt','record.json'),'{broken');
+        const legacyDir = path.join(ready.serviceRoot,'tasks','legacy-slurm'); fs.mkdirSync(legacyDir);
+        const legacyBytes = JSON.stringify({...request,status:'running'});
+        fs.writeFileSync(path.join(legacyDir,'record.json'),legacyBytes);
+        fs.writeFileSync(path.join(legacyDir,'sources.json'),'{invalid');
         const first = await call('start', request);
+        assert.equal(first.recordVersion,2);
+        assert.equal(fs.readFileSync(path.join(legacyDir,'record.json'),'utf8'),legacyBytes);
         const duplicate = await call('start', {...request, id: 'monitor-two'});
         assert.equal(duplicate.id, first.id);
         secondPid = (await call('ensure', {}, secondEnv)).pid;
@@ -80,15 +88,7 @@ test('v2 bridge attaches, deduplicates, restores ownership and stops only the mo
         assert.ok(invocations.length > 0);
         assert.ok(invocations.every(([command, ...args]) => command === 'sacct' || (command === 'scontrol' && args.slice(0, 3).join(' ') === 'show job -o')));
     } finally {
-        try { await call('cancel', {id: 'monitor-one', ownerSession: 'owner'}); } catch {}
-        for (const [id, ownerSession] of [['other-owner','other'],['other-index','owner']]) {
-            try { await call('cancel', {id, ownerSession}); } catch {}
-        }
-        assert.deepEqual(fs.readdirSync(oldRoot),['sentinel']);
-        try { await call('cancel', {id:'other-endpoint',ownerSession:'owner'}, secondEnv); } catch {}
-        if (secondPid) process.kill(secondPid, 'SIGTERM');
-        if (pid) process.kill(pid, 'SIGTERM');
-        fs.rmSync(root, {recursive: true, force: true});
+        // Root guard stops all launchers, supervisors and children, even if an assertion or RPC fails.
     }
 });
 

@@ -23,7 +23,7 @@
       "state": "missing"
     },
     {
-      "authored_body_sha256": "sha256:0ae585b598d21c74be74a24278c494affffbeb5529d2da9df38e54dbf7fe1a08",
+      "authored_body_sha256": "sha256:d542e2476381c3549f0427228fcce5a3b8ab3aeadac239250004768056bfa964",
       "covers_sources": [
         "src/core/persistent-runtime.ts",
         "src/core/remote-persistent.ts"
@@ -57,7 +57,7 @@
       "state": "stale-authored-prose"
     },
     {
-      "authored_body_sha256": "sha256:1903a04bfb1a52bea75e66423a543584fed3f4d61a3cf75f87d19ccc0809afff",
+      "authored_body_sha256": "sha256:0fb498c9435dd64b9126c72feef71ddcca00c6c703888da37d1ad3a5edcdd9ad",
       "covers_sources": [
         "src/core/common.ts",
         "src/core/monitor-exclusion.ts",
@@ -100,7 +100,7 @@
       "state": "stale-authored-prose"
     },
     {
-      "authored_body_sha256": "sha256:e09771e1fd49b29fdfc60542883d8738bdddd3ebcfb0dd939f254b2c8147cb4c",
+      "authored_body_sha256": "sha256:a4642d488874921f8b2e6f712cb007393f1c375b99980388874e149777b2c1cf",
       "covers_sources": [
         "src/persistent/client.ts",
         "src/persistent/daemon.mjs",

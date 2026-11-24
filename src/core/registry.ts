@@ -1071,7 +1071,8 @@ export class BackgroundTaskRegistry {
     this.pruneOldTasks();
   }
 
-  private applyDurableRecord(task: BgTask, record: durable.TaskRecord): void {
+  private applyDurableRecord(task: BgTask, record: durable.TaskRecord | null): void {
+    if (record === null) throw new Error('Legacy task admission is unavailable');
     if (this.tasks.get(task.id) !== task) return;
     if (record.ownerSession !== this.ownerSession || task.ownerSession !== this.ownerSession) throw new Error('Persistent task owner mismatch');
     this.durableRefreshFailures.delete(task);
@@ -1964,7 +1965,9 @@ export class BackgroundTaskRegistry {
       const deadline = Date.now() + 10000;
       while (record.status === 'running' && Date.now() < deadline) {
         await new Promise<void>(resolve => setTimeout(resolve, 100));
-        record = await (this.taskClients.get(task) ?? this.durableClient).get(task.id, task.ownerSession);
+        const refreshed = await (this.taskClients.get(task) ?? this.durableClient).get(task.id, task.ownerSession);
+        if (!refreshed) throw new Error('Legacy task admission is unavailable');
+        record = refreshed;
       }
       this.applyDurableRecord(task, record);
       if (record.status !== 'killed')

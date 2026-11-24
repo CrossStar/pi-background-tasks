@@ -10,6 +10,7 @@ let accountingCache;
 let accountingAt = 0;
 const expand = createSourceExpander();
 function enriched(value) {
+    if (!value) return null;
     const manifest = path.join(path.dirname(record(value.id)), 'sources.json');
     const sources = fs.existsSync(manifest) ? JSON.parse(fs.readFileSync(manifest, 'utf8')) : value.sources;
     if (!sources) return value;
@@ -20,6 +21,7 @@ privateDir(root);
 privateDir(path.join(root, 'tasks'));
 async function get(id) {
     const r = load(id);
+    if (!r) return null;
     if (r.status !== 'running')
         return r;
     for (let i = 0; i < 10; i++) {
@@ -36,6 +38,7 @@ async function get(id) {
     throw Error('SUPERVISOR_UNREACHABLE: preserve last running snapshot');
 }
 function checkOwner(record, owner) {
+    if (!record) throw Error('Task not found (legacy admission is invisible)');
     if (owner !== undefined && record.ownerSession !== owner) throw Error('Session ownership mismatch');
 }
 const daemonIdentity = crypto.randomUUID();
@@ -45,6 +48,7 @@ const service = server(async (method, p) => {
         return { pid: process.pid, startToken: daemonIdentity, protocolVersion: 2, sessionOwnership: 1 };
     if (method === 'logs' || method === 'mirrorLogs') {
         let r = load(p.id);
+        if (!r) return null;
         checkOwner(r, p.ownerSession);
         r = enriched(r);
         const indexSource = typeof p.source === 'string' && /^array-(\d+)-(stdout|stderr)$/.exec(p.source);
@@ -72,7 +76,7 @@ const service = server(async (method, p) => {
         if (p.capability !== r.capability || !r.slurm) throw Error('Unauthorized');
         if (!accountingCache || Date.now() - accountingAt >= 25000 || (Number.isFinite(p.notBefore) && p.notBefore <= Date.now() && accountingAt < p.notBefore)) {
             const selectors = fs.readdirSync(path.join(root, 'tasks')).flatMap(id => {
-                try { const task = load(id); return task.status === 'running' && task.slurm ? [jobSelector(task.slurm.jobId, task.slurm.arrayTaskId)] : []; } catch { return []; }
+                try { const task = load(id); return task?.status === 'running' && task.slurm ? [jobSelector(task.slurm.jobId, task.slurm.arrayTaskId)] : []; } catch { return []; }
             });
             accountingAt = Date.now();
             const observedAt = accountingAt;
@@ -87,7 +91,9 @@ const service = server(async (method, p) => {
         return {...result, records: result.records.filter(row => row.id === selector || row.id.startsWith(selector + '_') || row.id.startsWith(selector + '+'))};
     }
     if (method === 'get') {
-        checkOwner(load(p.id), p.ownerSession);
+        const stored = load(p.id);
+        if (!stored) return null;
+        checkOwner(stored, p.ownerSession);
         return enriched(await get(p.id));
     }
     if (method === 'list') {
@@ -97,6 +103,7 @@ const service = server(async (method, p) => {
         for (const id of ids.slice(offset, offset + 50)) {
             try {
                 const stored = load(id);
+                if (!stored) continue;
                 if (p.ownerSession !== undefined && stored?.ownerSession !== p.ownerSession) continue;
                 const value = enriched(stored);
                 if (p.ownerSession !== undefined && value?.ownerSession !== p.ownerSession) continue;
@@ -143,7 +150,7 @@ const service = server(async (method, p) => {
             for (const id of fs.readdirSync(path.join(root, 'tasks'))) {
                 let existing;
                 try { existing = load(id); } catch { continue; }
-                if (existing.status === 'running' && existing.ownerSession === p.ownerSession && existing.slurm &&
+                if (existing?.status === 'running' && existing.ownerSession === p.ownerSession && existing.slurm &&
                     jobSelector(existing.slurm.jobId, existing.slurm.arrayTaskId) === jobSelector(p.slurm.jobId, p.slurm.arrayTaskId)) return enriched(await get(id));
             }
         }
@@ -151,6 +158,7 @@ const service = server(async (method, p) => {
         if (Buffer.byteLength(JSON.stringify(metadata)) > 12000)
             throw Error('Task metadata exceeds 12000 byte limit');
         if (fs.existsSync(target)) {
+            if (!load(p.id)) throw Error('Task admission exists (legacy); choose a new task ID; never replay');
             if (load(p.id).ownerSession !== p.ownerSession) throw Error('Session ownership mismatch');
             return get(p.id);
         }
@@ -165,7 +173,7 @@ const service = server(async (method, p) => {
                 throw Error('Task admission exists; never replay');
             throw e;
         }
-        const r = { sources: p.sources, slurm: p.slurm, id: p.id, cwd: p.cwd, name: p.name, command: p.command, description: p.description, ownerSession: p.ownerSession, notifyOnCompletion: p.notifyOnCompletion, triggerOnCompletion: p.triggerOnCompletion, status: 'running', startedAt: Date.now(), outputFile: path.join(dir, 'output.log'), capability: crypto.randomBytes(32).toString('hex') };
+        const r = { recordVersion: 2, sources: p.sources, slurm: p.slurm, id: p.id, cwd: p.cwd, name: p.name, command: p.command, description: p.description, ownerSession: p.ownerSession, notifyOnCompletion: p.notifyOnCompletion, triggerOnCompletion: p.triggerOnCompletion, status: 'running', startedAt: Date.now(), outputFile: path.join(dir, 'output.log'), capability: crypto.randomBytes(32).toString('hex') };
         fs.closeSync(fs.openSync(r.outputFile, 'wx', 0o600));
         atomic(target, r);
         const c = spawn(process.execPath, [fileURLToPath(new URL('./supervisor.mjs', import.meta.url)), p.id], { windowsHide: true, env: { ...process.env, PI_BG_SERVICE_DIR: root }, detached: true, stdio: ['pipe', 'ignore', 'ignore'] });

@@ -13,6 +13,6 @@ Persistent local and SSH tasks belong to the stable Pi session ID recorded as `o
 
 Ownership is captured before asynchronous admission and remains fixed for the registry and its task clients. Callers without a session ID receive a registry-private random identity; they do not share an empty or process-wide owner. A registry rejects attempts to bind a different identity. The extension selects a fresh registry on identity changes; same-session reload can retain its existing registry and active tasks.
 
-Old records without an owner remain on disk but are not automatically claimed or imported. This release adds no cross-session claiming interface.
+Parsed legacy records without an own `recordVersion` marker remain on disk but are invisible to every session, even when they contain an owner. New records use `recordVersion: 2`; direct get returns null for legacy admissions. Records are never migrated or claimed implicitly.
 
 Disk recovery restores status, logs, cancellation, and the original notification preferences for the matching owner. An opted-in completion is delivered when that same session is idle, unless its full session history already contains the task's notification. Tasks still running at recovery remain subscribed; terminal tasks completed while offline are eligible for catch-up. Other sessions and unowned records remain excluded. Recovery does not replay commands or terminal EventBus events. Session-owned agents and managed workflows retain their normal shutdown and cleanup behavior.

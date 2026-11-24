@@ -1,3 +1,4 @@
+export function replaceLegacyDaemon(directory: string, originalError: unknown): Promise<void>;
 export function serviceRoot(): string;
 export const root: string;
 export function privateDir(directory: string): void;

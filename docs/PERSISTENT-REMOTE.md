@@ -11,7 +11,7 @@ covers_sources: [src/core/persistent-runtime.ts, src/core/remote-persistent.ts]
 
 ## Protocol 2 upgrade
 
-The new local namespace is `~/.pi/background-tasks-v2`; the remote namespace is `~/.pi/background-tasks-remote-v2`. Old local and remote durable tasks keep running, but are not discovered by the new service. There is no migration, cross-instance restoration, or daemon replacement. Do not point `PI_BG_SERVICE_DIR` at an old service root. Runtime assets are installed by digest; first use starts only the new service.
+The stable roots remain `~/.pi/background-tasks` locally and `~/.pi/background-tasks-remote` remotely. On Linux, ensure automatically replaces an authenticated protocol-1 daemon after checking its current-user PID, daemon entrypoint and service root through /proc. Only that daemon receives SIGTERM; old supervisors keep running. Legacy records remain untouched, invisible to all sessions, and receive no notifications. Unsupported or unidentifiable daemons require explicit operator recovery. Runtime assets remain installed by digest.
 
 Providers optionally expose `persistent` start/get/list/cancel/logs methods alongside the legacy spawn method. The registry captures provider identity, cwd, and bound methods synchronously before admission. A persistent admission error never selects the legacy spawn or local runner. Ambiguous starts retain their original ID and are queried rather than resubmitted.
 

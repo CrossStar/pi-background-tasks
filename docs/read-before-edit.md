@@ -35,9 +35,11 @@ Every production file under `src/**` and `extensions/**` has exactly one primary
 | `src/extension.ts` | [subsystems/host-ui-and-telemetry](./subsystems/host-ui-and-telemetry.md) |
 | `src/persistent/client.ts` | [subsystems/persistent-runtime](./subsystems/persistent-runtime.md) |
 | `src/persistent/daemon.mjs` | [subsystems/persistent-runtime](./subsystems/persistent-runtime.md) |
+| `src/persistent/log-sources.mjs` | [subsystems/persistent-runtime](./subsystems/persistent-runtime.md) |
 | `src/persistent/remote-bridge.mjs` | [subsystems/persistent-runtime](./subsystems/persistent-runtime.md) |
 | `src/persistent/shared.d.mts` | [subsystems/persistent-runtime](./subsystems/persistent-runtime.md) |
 | `src/persistent/shared.mjs` | [subsystems/persistent-runtime](./subsystems/persistent-runtime.md) |
+| `src/persistent/slurm-watch.mjs` | [subsystems/persistent-runtime](./subsystems/persistent-runtime.md) |
 | `src/persistent/supervisor.mjs` | [subsystems/persistent-runtime](./subsystems/persistent-runtime.md) |
 | `src/persistent/windows-tree.mjs` | [subsystems/persistent-runtime](./subsystems/persistent-runtime.md) |
 | `src/ui/background-tasks-manager.ts` | [subsystems/host-ui-and-telemetry](./subsystems/host-ui-and-telemetry.md) |

@@ -124,15 +124,18 @@ function optionalTrimmed(value: string): string | undefined {
 }
 
 const BgRunParams = Type.Object({
-  name: Type.String({
-    description:
-      'Short human-readable task name shown in the bg footer dock. Required; use 2-6 words, not the raw command.',
-  }),
-  command: Type.String({ description: 'Shell command to start in the background' }),
-  isAgent: Type.Boolean({
-    description:
-      'Required. Set true only when this background task launches an LLM/agent process, such as a child `pi -p ...` or `pi --mode json ...`, so Pi-agent telemetry can be collected. Set false for scripts, tests, servers, sleeps, and ordinary shell commands.',
-  }),
+  kind: Type.Optional(Type.String({enum: ['shell', 'slurm']})),
+  attach: Type.Optional(Type.Object({jobId: Type.String({pattern: '^\\d+$'}), arrayTaskId: Type.Optional(Type.Number({minimum: 0, multipleOf: 1}))})),
+  logs: Type.Optional(Type.Object({files: Type.Optional(Type.Array(Type.String())), extra: Type.Optional(Type.Array(Type.String()))})),
+  localSlurm: Type.Optional(Type.Boolean({description: 'Explicitly allow a local Slurm installation; never falls back from remote.'})),
+  keyPattern: Type.Optional(Type.String({description: 'Case-insensitive digest key-line regular expression.'})),
+  name: Type.Optional(Type.String({
+    description: 'Short human-readable task name; defaults to Slurm job id for attachments.',
+  })),
+  command: Type.Optional(Type.String({ description: 'Shell command; required for shell kind, forbidden for slurm' })),
+  isAgent: Type.Optional(Type.Boolean({
+    description: 'Required for shell commands. Set true only for LLM/agent processes; false for scripts, tests, servers and ordinary commands. Slurm attachments always use false.',
+  })),
   description: Type.Optional(
     Type.String({ description: 'Optional longer human-readable context for the task' }),
   ),
@@ -188,6 +191,7 @@ const BgStatusParams = Type.Object({
 });
 
 const BgLogsParams = Type.Object({
+  source: Type.Optional(Type.String({description: 'Registered source id; defaults to digest when present, otherwise primary output.'})),
   taskId: Type.String({ description: 'Task ID or unambiguous prefix' }),
   maxBytes: Type.Optional(
     Type.Number({
@@ -800,7 +804,7 @@ export default function backgroundTasksExtension(pi: ExtensionAPI): void {
   pi.registerTool<typeof BgRunParams, BgRunDetails>({
     name: 'bg_run',
     label: 'Background Run',
-    description: `Start a named long-running shell command in the background and return immediately with a task ID and output path. By default, completed, failed, or killed terminal state is delivered automatically as <background-task-notification> and starts a follow-up agent turn; do not sleep or poll merely to wait. Output is written to .pi/tasks and model-visible logs are bounded to ${formatSize(MAX_LOG_BYTES)}.`,
+    description: `Start a named long-running shell command or attach a read-only Slurm monitor in the background and return immediately with a task ID and output path. By default, completed, failed, or killed terminal state is delivered automatically as <background-task-notification> and starts a follow-up agent turn; do not sleep or poll merely to wait. Output is written to .pi/tasks and model-visible logs are bounded to ${formatSize(MAX_LOG_BYTES)}.`,
     promptSnippet:
       'Start a named long-running shell command; default terminal notification wakes a follow-up turn, so yield instead of polling',
     promptGuidelines: [
@@ -817,6 +821,9 @@ export default function backgroundTasksExtension(pi: ExtensionAPI): void {
     prepareArguments(args): BgRunParamsValue {
       if (!args || typeof args !== 'object') throw new Error('bg_run arguments must be an object');
       const input = args as BgToolArgumentRecord;
+      if ('kind' in args && args.kind !== undefined && args.kind !== 'shell' && args.kind !== 'slurm') throw new Error('Unsupported task kind');
+      if ('kind' in args && args.kind === 'slurm') return args as BgRunParamsValue;
+      if ('attach' in args && args.attach !== undefined) throw new Error('attach requires kind:slurm');
       if (typeof input.command !== 'string') throw new Error('bg_run requires command string');
       if (typeof input.isAgent !== 'boolean') {
         throw new Error(
@@ -831,6 +838,7 @@ export default function backgroundTasksExtension(pi: ExtensionAPI): void {
           deriveTaskNameFromCommand(input.command),
         isAgent: input.isAgent,
       };
+      if ('logs' in args && args.logs !== undefined) prepared.logs = args.logs as NonNullable<BgRunParamsValue['logs']>;
       if (typeof input.description === 'string') prepared.description = input.description;
       if (typeof input.timeoutSeconds === 'number') prepared.timeoutSeconds = input.timeoutSeconds;
       if (typeof input.notifyOnCompletion === 'boolean')
@@ -840,20 +848,34 @@ export default function backgroundTasksExtension(pi: ExtensionAPI): void {
       return prepared;
     },
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-      if (typeof params.isAgent !== 'boolean') {
+      if (params.kind === 'slurm') {
+        if (!params.attach || params.command !== undefined || params.isAgent === true) throw new Error('Slurm requires attach and forbids command/isAgent:true');
+        if (params.keyPattern !== undefined) {
+          if (params.keyPattern.length > 256 || /[()*+?{}]|\\[1-9]/.test(params.keyPattern)) throw new Error('Unsafe keyPattern: quantifiers, groups and backreferences are forbidden');
+          new RegExp(params.keyPattern, 'i');
+        }
+      } else if (typeof params.command !== 'string') throw new Error('bg_run requires command string');
+      if (params.kind !== 'slurm' && typeof params.isAgent !== 'boolean') {
         throw new Error(
           'bg_run requires isAgent boolean. Set true only for LLM/agent tasks; set false for scripts, tests, servers, sleeps, and ordinary shell commands.',
         );
       }
       const taskOptions: StartTaskOptions = {
         name: params.name,
-        isAgent: params.isAgent,
+        isAgent: params.isAgent ?? false,
+        ...(params.kind === 'slurm' && params.attach ? {slurm: {...params.attach, ...(params.logs ? {logs: params.logs} : {}), ...(params.keyPattern === undefined ? {} : {keyPattern: params.keyPattern})}, localSlurm: params.localSlurm} : {}),
         notifyOnCompletion: params.notifyOnCompletion ?? true,
         triggerOnCompletion: params.triggerOnCompletion ?? true,
       };
+      if (params.kind !== 'slurm' && params.logs) {
+        taskOptions.sources = [
+          ...(params.logs.files ?? []).map((path, index) => ({id: `file-${index}`, label: path, kind: 'file' as const, location: 'local' as const, path})),
+          ...(params.logs.extra ?? []).map((pattern, index) => ({id: `glob-${index}`, label: pattern, kind: 'file' as const, location: 'local' as const, path: '.', pattern})),
+        ];
+      }
       if (params.description !== undefined) taskOptions.description = params.description;
       if (params.timeoutSeconds !== undefined) taskOptions.timeoutSeconds = params.timeoutSeconds;
-      const task = await startTask(ctx, params.command, taskOptions);
+      const task = await startTask(ctx, params.command ?? `slurm attach ${params.attach?.jobId ?? ''}`, taskOptions);
       const completionDelivery = deriveCompletionDeliveryGuidance(
         task.notifyOnCompletion,
         task.triggerOnCompletion,
@@ -995,6 +1017,7 @@ export default function backgroundTasksExtension(pi: ExtensionAPI): void {
         task,
         normalizeMaxBytes(params.maxBytes),
         params.tail ?? true,
+        params.source,
       );
       return {
         content: textContent(logs.text),
@@ -1036,7 +1059,7 @@ export default function backgroundTasksExtension(pi: ExtensionAPI): void {
     async execute(_toolCallId, params) {
       const task = registry.resolveTask(params.taskId);
       await registry.stopTask(task, 'user');
-      const message = `Killed background task ${taskDisplayName(task)} (${task.id}). Output: ${task.outputPath}`;
+      const message = task.slurm ? `Stopped monitoring Slurm job ${task.slurm.jobId}. The job was not cancelled. Output: ${task.outputPath}` : `Killed background task ${taskDisplayName(task)} (${task.id}). Output: ${task.outputPath}`;
       return {
         content: textContent(message),
         details: { task: registry.snapshot(task), message },

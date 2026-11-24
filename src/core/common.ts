@@ -35,6 +35,8 @@ export interface TaskToolUsage {
 }
 
 export interface BgTaskSnapshot {
+  sources?: import('../persistent/client.ts').LogSource[] | undefined;
+  slurm?: import('../persistent/client.ts').SlurmAttach | undefined;
   ownerSession?: string | undefined;
   lifetime?: 'persistent' | 'session' | undefined;
   id: string;
@@ -195,6 +197,9 @@ export interface BgKillDetails {
 }
 
 export interface StartTaskOptions {
+  sources?: import('../persistent/client.ts').LogSource[] | undefined;
+  slurm?: import('../persistent/client.ts').SlurmAttach | undefined;
+  localSlurm?: boolean | undefined;
   name?: string | undefined;
   description?: string | undefined;
   isAgent?: boolean | undefined;
@@ -691,6 +696,8 @@ export function normalizeMaxBytes(value: unknown, fallback = DEFAULT_LOG_BYTES):
 export function snapshot(task: BgTask): BgTaskSnapshot {
   return {
     ownerSession: task.ownerSession,
+    sources: task.sources,
+    slurm: task.slurm,
     lifetime: task.lifetime ?? 'session',
     id: task.id,
     name: taskDisplayName(task),

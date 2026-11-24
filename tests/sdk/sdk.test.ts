@@ -732,8 +732,8 @@ void describe('sdk', () => {
       assert.ok(isJsonObject(bgRunParams), 'bg_run schema should be an object');
       const required = bgRunParams['required'];
       assert.ok(
-        Array.isArray(required) && required.includes('isAgent'),
-        'bg_run schema must require isAgent',
+        required === undefined || (Array.isArray(required) && !required.includes('isAgent')),
+        'Slurm attachments must not require shell-only isAgent',
       );
       const properties = bgRunParams['properties'];
       const isAgentSchema = isJsonObject(properties) ? properties['isAgent'] : bgRunParams;

@@ -4,6 +4,18 @@ import crypto from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { root, privateDir, endpoint, server, rpc, atomic, record, load } from './shared.mjs';
+import { validateSources, readSourceRange, createSourceExpander, MIRROR_RANGE_LIMIT } from './log-sources.mjs';
+import { executeSlurm, parseAccounting, jobSelector, discoverSources, keyRegex } from './slurm-watch.mjs';
+let accountingCache;
+let accountingAt = 0;
+const expand = createSourceExpander();
+function enriched(value) {
+    const manifest = path.join(path.dirname(record(value.id)), 'sources.json');
+    const sources = fs.existsSync(manifest) ? JSON.parse(fs.readFileSync(manifest, 'utf8')) : value.sources;
+    if (!sources) return value;
+    const expanded = expand(value.id, sources, value.cwd);
+    return {...value, sources: expanded, ...(expanded.diagnostic ? {diagnostic: [value.diagnostic, expanded.diagnostic].filter(Boolean).join('; ')} : {})};
+}
 privateDir(root);
 privateDir(path.join(root, 'tasks'));
 async function get(id) {
@@ -30,10 +42,53 @@ const daemonIdentity = crypto.randomUUID();
 const service = server(async (method, p) => {
     if (p.ownerSession !== undefined && (typeof p.ownerSession !== 'string' || !p.ownerSession.length)) throw Error('Invalid ownerSession');
     if (method === 'ping')
-        return { pid: process.pid, startToken: daemonIdentity, protocolVersion: 1, sessionOwnership: 1 };
+        return { pid: process.pid, startToken: daemonIdentity, protocolVersion: 2, sessionOwnership: 1 };
+    if (method === 'logs' || method === 'mirrorLogs') {
+        let r = load(p.id);
+        checkOwner(r, p.ownerSession);
+        r = enriched(r);
+        const indexSource = typeof p.source === 'string' && /^array-(\d+)-(stdout|stderr)$/.exec(p.source);
+        if (indexSource && r.slurm && !r.sources?.some(source => source.id === p.source)) {
+            const [, index, kind] = indexSource;
+            if (r.slurm.arrayTaskId !== undefined && String(r.slurm.arrayTaskId) !== index) throw Error('Array index outside attached monitor');
+            const attach = {...r.slurm, arrayTaskId: Number(index)};
+            const discovered = discoverSources(await executeSlurm('discovery', [jobSelector(attach.jobId, attach.arrayTaskId)]), attach);
+            const source = discovered.sources.find(source => source.kind === kind);
+            if (!source) throw Error('Requested array log is unavailable');
+            r = {...r, sources: [...(r.sources ?? []), {...source, id: p.source, label: p.source}]};
+            // Resolve only the requested index. Do not subscribe it to automatic tailing.
+        }
+        if (r.outputFile !== path.join(root, 'tasks', p.id, 'output.log')) throw Error('Unsafe stored output path');
+        return readSourceRange(r, p.source, p.offset, p.maxBytes, method === 'mirrorLogs' ? MIRROR_RANGE_LIMIT : undefined);
+    }
+    if (method === 'registerSources') {
+        const r = load(p.id);
+        if (p.capability !== r.capability) throw Error('Unauthorized');
+        atomic(path.join(path.dirname(record(p.id)), 'sources.json'), validateSources(p.sources, r.cwd));
+        return true;
+    }
+    if (method === 'slurmStatus') {
+        const r = load(p.id);
+        if (p.capability !== r.capability || !r.slurm) throw Error('Unauthorized');
+        if (!accountingCache || Date.now() - accountingAt >= 25000 || (Number.isFinite(p.notBefore) && p.notBefore <= Date.now() && accountingAt < p.notBefore)) {
+            const selectors = fs.readdirSync(path.join(root, 'tasks')).flatMap(id => {
+                try { const task = load(id); return task.status === 'running' && task.slurm ? [jobSelector(task.slurm.jobId, task.slurm.arrayTaskId)] : []; } catch { return []; }
+            });
+            accountingAt = Date.now();
+            const observedAt = accountingAt;
+            accountingCache = executeSlurm('accounting', selectors).then(text => {
+                const diagnostics = [];
+                return {records: parseAccounting(text, message => { if (diagnostics.length < 32) diagnostics.push(message); }), observedAt, diagnostics};
+            });
+            accountingCache.catch(() => { accountingCache = undefined; });
+        }
+        const selector = jobSelector(r.slurm.jobId, r.slurm.arrayTaskId);
+        const result = await accountingCache;
+        return {...result, records: result.records.filter(row => row.id === selector || row.id.startsWith(selector + '_') || row.id.startsWith(selector + '+'))};
+    }
     if (method === 'get') {
         checkOwner(load(p.id), p.ownerSession);
-        return get(p.id);
+        return enriched(await get(p.id));
     }
     if (method === 'list') {
         const ids = fs.readdirSync(path.join(root, 'tasks')).sort();
@@ -41,7 +96,9 @@ const service = server(async (method, p) => {
         const records = [], diagnostics = [];
         for (const id of ids.slice(offset, offset + 50)) {
             try {
-                const value = load(id);
+                const stored = load(id);
+                if (p.ownerSession !== undefined && stored?.ownerSession !== p.ownerSession) continue;
+                const value = enriched(stored);
                 if (p.ownerSession !== undefined && value?.ownerSession !== p.ownerSession) continue;
                 if (!value || value.id !== id || typeof value.cwd !== 'string' ||
                     typeof value.name !== 'string' || typeof value.command !== 'string' ||
@@ -78,6 +135,18 @@ const service = server(async (method, p) => {
     }
     if (method === 'start') {
         const target = record(p.id);
+        if (p.sources !== undefined) p.sources = validateSources(p.sources, p.cwd);
+        if (p.slurm !== undefined) {
+            jobSelector(p.slurm.jobId, p.slurm.arrayTaskId);
+            keyRegex(p.slurm.keyPattern);
+            if (!p.ownerSession) throw Error('Slurm attach requires ownerSession');
+            for (const id of fs.readdirSync(path.join(root, 'tasks'))) {
+                let existing;
+                try { existing = load(id); } catch { continue; }
+                if (existing.status === 'running' && existing.ownerSession === p.ownerSession && existing.slurm &&
+                    jobSelector(existing.slurm.jobId, existing.slurm.arrayTaskId) === jobSelector(p.slurm.jobId, p.slurm.arrayTaskId)) return enriched(await get(id));
+            }
+        }
         const { env: ignoredEnvironment, ...metadata } = p;
         if (Buffer.byteLength(JSON.stringify(metadata)) > 12000)
             throw Error('Task metadata exceeds 12000 byte limit');
@@ -96,7 +165,7 @@ const service = server(async (method, p) => {
                 throw Error('Task admission exists; never replay');
             throw e;
         }
-        const r = { id: p.id, cwd: p.cwd, name: p.name, command: p.command, description: p.description, ownerSession: p.ownerSession, notifyOnCompletion: p.notifyOnCompletion, triggerOnCompletion: p.triggerOnCompletion, status: 'running', startedAt: Date.now(), outputFile: path.join(dir, 'output.log'), capability: crypto.randomBytes(32).toString('hex') };
+        const r = { sources: p.sources, slurm: p.slurm, id: p.id, cwd: p.cwd, name: p.name, command: p.command, description: p.description, ownerSession: p.ownerSession, notifyOnCompletion: p.notifyOnCompletion, triggerOnCompletion: p.triggerOnCompletion, status: 'running', startedAt: Date.now(), outputFile: path.join(dir, 'output.log'), capability: crypto.randomBytes(32).toString('hex') };
         fs.closeSync(fs.openSync(r.outputFile, 'wx', 0o600));
         atomic(target, r);
         const c = spawn(process.execPath, [fileURLToPath(new URL('./supervisor.mjs', import.meta.url)), p.id], { windowsHide: true, env: { ...process.env, PI_BG_SERVICE_DIR: root }, detached: true, stdio: ['pipe', 'ignore', 'ignore'] });

@@ -46,6 +46,8 @@ A finished badge is cleared when that task's detail view is opened, or when `/bg
 
 ## Task manager UI
 
+For tasks with registered log sources, detail keys `[` and `]` select sources, and `m` selects a merged view. Each physical log row receives a sanitized `[label]` prefix. Source views share bounded reads, pause/follow and width-safe layout. Remote sources show their cache timestamp and retained byte intervals; omitted bytes are explicitly marked. The full remote files remain authoritative. Source selection resets when opening another task.
+
 `/tasks`, `/bg-tasks`, and `Shift+Down` open the same overlay. Non-interactive contexts receive an error notification directing users to `/jobs`, `/logs`, `bg_status`, or `bg_logs`.
 
 

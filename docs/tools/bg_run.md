@@ -9,20 +9,33 @@ covers_sources: []
 ---
 # `bg_run`
 
+Use `kind: "slurm"`, `attach: {jobId: "42", arrayTaskId?: 3}`, and a concise `name` to monitor an existing allocation. Do not supply `command` or `isAgent:true`. Optional `logs: {files: ["logs/train.log"], extra: ["runs/**/*.log"]}` selects full logs; globs resolve relative to execution cwd and include later files. `keyPattern` customizes the case-insensitive digest filter. It is limited to 256 characters and rejects quantifiers, groups and backreferences; use literal alternatives or character classes. Matching sees at most 300 characters per line. A persistent remote provider is required unless `localSlurm:true` explicitly selects a local Slurm installation. There is no submission or automatic local fallback. Duplicate active attachments in the same service and owner return the existing monitor. Stop only stops monitoring, never the allocation.
+
+Omitted `kind` means shell execution and requires `command` plus boolean `isAgent`; a missing name is derived by argument preparation. Shell tasks also accept `logs`. Delivery flags, description and timeout apply to both kinds. Slurm timeout terminates monitoring only.
+
 Execution uses the provider captured at admission, or the local shell if none is selected. External backends support only `isAgent:false`; discovery and transport failures never fall back locally. Logs remain in the local runtime directory. An unverified remote outcome is reported as failed, not killed. See [execution backends v1](../api/execution-backends-v1.md).
 
 <!-- pi-docs:begin name="tool-contract-bg_run" generator="scripts/docs/generate.mjs" -->
 - Label: **Background Run**
-- Source: `src/extension.ts:800`
-- Description: Start a named long-running shell command in the background and return immediately with a task ID and output path. By default, completed, failed, or killed terminal state is delivered automatically as <background-task-notification> and starts a follow-up agent turn; do not sleep or poll merely to wait. Output is written to .pi/tasks and model-visible logs are bounded to 50.0KB.
+- Source: `src/extension.ts:804`
+- Description: Start a named long-running shell command or attach a read-only Slurm monitor in the background and return immediately with a task ID and output path. By default, completed, failed, or killed terminal state is delivered automatically as <background-task-notification> and starts a follow-up agent turn; do not sleep or poll merely to wait. Output is written to .pi/tasks and model-visible logs are bounded to 50.0KB.
 - Root schema: `object`
 
 | Field | Required | Type | Description | Constraints |
 | --- | --- | --- | --- | --- |
-| `command` | yes | `string` | Shell command to start in the background |  |
+| `attach` | no | `object` |  |  |
+| `attach.arrayTaskId` | no | `number` |  |  |
+| `attach.jobId` | yes | `string` |  |  |
+| `command` | no | `string` | Shell command; required for shell kind, forbidden for slurm |  |
 | `description` | no | `string` | Optional longer human-readable context for the task |  |
-| `isAgent` | yes | `boolean` | Required. Set true only when this background task launches an LLM/agent process, such as a child `pi -p ...` or `pi --mode json ...`, so Pi-agent telemetry can be collected. Set false for scripts, tests, servers, sleeps, and ordinary shell commands. |  |
-| `name` | yes | `string` | Short human-readable task name shown in the bg footer dock. Required; use 2-6 words, not the raw command. |  |
+| `isAgent` | no | `boolean` | Required for shell commands. Set true only for LLM/agent processes; false for scripts, tests, servers and ordinary commands. Slurm attachments always use false. |  |
+| `keyPattern` | no | `string` | Case-insensitive digest key-line regular expression. |  |
+| `kind` | no | `string` |  | enum `shell` \| `slurm` |
+| `localSlurm` | no | `boolean` | Explicitly allow a local Slurm installation; never falls back from remote. |  |
+| `logs` | no | `object` |  |  |
+| `logs.extra` | no | `string[]` |  |  |
+| `logs.files` | no | `string[]` |  |  |
+| `name` | no | `string` | Short human-readable task name; defaults to Slurm job id for attachments. |  |
 | `notifyOnCompletion` | no | `boolean` | Whether to deliver the durable terminal notification. Default: true; disable only when deliberately taking over completion monitoring. |  |
 | `timeoutSeconds` | no | `number` | Optional timeout; task is failed and killed when exceeded |  |
 | `triggerOnCompletion` | no | `boolean` | Whether that notification should automatically trigger a follow-up agent turn. Default: true for bg_run; requires notifyOnCompletion. |  |
@@ -34,8 +47,25 @@ Execution uses the provider captured at admission, or the local shell if none is
 ```json
 {
   "properties": {
+    "attach": {
+      "properties": {
+        "arrayTaskId": {
+          "minimum": 0,
+          "multipleOf": 1,
+          "type": "number"
+        },
+        "jobId": {
+          "pattern": "^\\d+$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "jobId"
+      ],
+      "type": "object"
+    },
     "command": {
-      "description": "Shell command to start in the background",
+      "description": "Shell command; required for shell kind, forbidden for slurm",
       "type": "string"
     },
     "description": {
@@ -43,11 +73,44 @@ Execution uses the provider captured at admission, or the local shell if none is
       "type": "string"
     },
     "isAgent": {
-      "description": "Required. Set true only when this background task launches an LLM/agent process, such as a child `pi -p ...` or `pi --mode json ...`, so Pi-agent telemetry can be collected. Set false for scripts, tests, servers, sleeps, and ordinary shell commands.",
+      "description": "Required for shell commands. Set true only for LLM/agent processes; false for scripts, tests, servers and ordinary commands. Slurm attachments always use false.",
       "type": "boolean"
     },
+    "keyPattern": {
+      "description": "Case-insensitive digest key-line regular expression.",
+      "type": "string"
+    },
+    "kind": {
+      "enum": [
+        "shell",
+        "slurm"
+      ],
+      "type": "string"
+    },
+    "localSlurm": {
+      "description": "Explicitly allow a local Slurm installation; never falls back from remote.",
+      "type": "boolean"
+    },
+    "logs": {
+      "properties": {
+        "extra": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "files": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [],
+      "type": "object"
+    },
     "name": {
-      "description": "Short human-readable task name shown in the bg footer dock. Required; use 2-6 words, not the raw command.",
+      "description": "Short human-readable task name; defaults to Slurm job id for attachments.",
       "type": "string"
     },
     "notifyOnCompletion": {
@@ -63,11 +126,7 @@ Execution uses the provider captured at admission, or the local shell if none is
       "type": "boolean"
     }
   },
-  "required": [
-    "command",
-    "isAgent",
-    "name"
-  ],
+  "required": [],
   "type": "object"
 }
 ```

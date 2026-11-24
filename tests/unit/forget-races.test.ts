@@ -95,7 +95,7 @@ test('legacy monitor forgets offline after remote record and local metadata disa
     const task = registry.allTasks()[0]!;
     await task.metadataWriteChain;
     // Older module instances retained captured clients but had no global confirmation membership.
-    const state: unknown = Reflect.get(process, Symbol.for('pi-background-tasks.monitor-state.v1'));
+    const state: unknown = Reflect.get(process, Symbol.for('pi-background-tasks.monitor-state.v2'));
     if (typeof state === 'object' && state !== null) {
       const confirmed: unknown = Reflect.get(state, 'confirmed');
       if (confirmed instanceof WeakSet) confirmed.delete(task);

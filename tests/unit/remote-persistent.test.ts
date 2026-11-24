@@ -13,8 +13,8 @@ test('runtime bundle digest matches immutable asset bytes', () => {
   const first = persistentRuntimeBundle();
   const canonical = JSON.stringify(Object.fromEntries(Object.entries(first.files).sort(([a], [b]) => a.localeCompare(b))));
   assert.equal(first.sha256, createHash('sha256').update(canonical).digest('hex'));
-  assert.equal(first.protocol, 1);
-  assert.deepEqual(Object.keys(first.files).sort(), ['daemon.mjs', 'remote-bridge.mjs', 'shared.mjs', 'supervisor.mjs', 'windows-tree.mjs']);
+  assert.equal(first.protocol, 2);
+  assert.deepEqual(Object.keys(first.files).sort(), ['daemon.mjs', 'log-sources.mjs', 'remote-bridge.mjs', 'shared.mjs', 'slurm-watch.mjs', 'supervisor.mjs', 'windows-tree.mjs']);
   first.files['daemon.mjs'] = 'mutated by consumer';
   assert.notEqual(persistentRuntimeBundle().files['daemon.mjs'], 'mutated by consumer');
 });

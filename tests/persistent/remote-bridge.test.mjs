@@ -31,7 +31,7 @@ test('remote bridge rejects a daemon without ownership capability before scoped 
                 child.stdin.end(JSON.stringify({method,params:{id:'a',cwd:root,name:'a',command:'true',ownerSession:'A'}}));
             });
             assert.equal(response.ok,false);
-            assert.match(response.error.message,/lacks session ownership/);
+            assert.match(response.error.message,/Incompatible daemon protocol/);
         }
         assert.ok(methods.every(method=>method==='ping'));
         assert.ok(service.listening);
@@ -60,8 +60,8 @@ test('remote bridge survives separate transports and preserves byte offsets', { 
         const ready = await call({ op: 'ensure' });
         assert.equal(ready.ok, true);
         assert.equal(ready.result.protocol, 'pi-background-tasks-remote');
-        assert.equal(ready.result.version, 1);
-        assert.equal(ready.result.daemonProtocolVersion, 1);
+        assert.equal(ready.result.version, 2);
+        assert.equal(ready.result.daemonProtocolVersion, 2);
         assert.equal(ready.result.serviceRoot, root);
         assert.equal(ready.result.runtime.node, process.version);
         assert.equal(ready.result.runtime.platform, process.platform);

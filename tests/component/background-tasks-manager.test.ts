@@ -647,6 +647,25 @@ void describe('BackgroundTasksManager component', () => {
     }
   });
 
+  void it('switches and merges sources with sanitized physical rows and pause/follow', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'bg-source-ui-'));
+    const first = join(root, 'first'); const second = join(root, 'second');
+    await writeFile(first, 'digest\n'); await writeFile(second, Array.from({length: 40}, (_, i) => `step ${i}\u001b[2J`).join('\n'));
+    const t = task({outputAbsPath:first, sources:[{id:'digest',label:'digest',kind:'digest',location:'local',path:first}, {id:'train',label:'train\nlabel',kind:'file',location:'remote',path:'/remote/log',mirrorPath:second,cachedAt:1,size:1000,ranges:[{start:900,end:1000}]}]});
+    const h = manager({}, [t]);
+    try {
+      h.instance.handleInput('\r'); await new Promise(r => setTimeout(r, 30));
+      h.instance.handleInput(']'); await new Promise(r => setTimeout(r, 30));
+      let rows=h.instance.render(100);assertWidth(rows,100);
+      assert.ok(rows.every(row=>!row.includes('\n') && !row.includes('\r')));
+      assert.match(stripAnsi(rows.join('\n')), /train label/);
+      h.instance.handleInput('\u001b[A'); rows=h.instance.render(100);assert.match(stripAnsi(rows.join('\n')), /paused/i);
+      h.instance.handleInput('f');await new Promise(r=>setTimeout(r,30));
+      h.instance.handleInput('m');await new Promise(r=>setTimeout(r,30));
+      rows=h.instance.render(40);assertWidth(rows,40);assert.ok(rows.every(row=>!row.includes('\n')));
+    } finally {h.instance.dispose();await rm(root,{recursive:true,force:true});}
+  });
+
   void it('handles non-running stop, output read failures, paging, long text, and close aliases', async () => {
     const many = Array.from({ length: 20 }, (_, i) =>
       task({

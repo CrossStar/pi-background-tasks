@@ -11,7 +11,7 @@ test('forget is local, preserves logs and excludes delayed discovery and fresh r
   let calls = 0;
   let release: (() => void) | undefined;
   let delayed = false;
-  const record: TaskRecord = { ownerSession: 's', id: 'task1', cwd: '/remote', name: 'task', command: 'cmd', status: 'running', startedAt: 42, outputFile: '/remote/out', outputBytes: 4 };
+  const record: TaskRecord = { slurm: {jobId: '42'}, ownerSession: 's', id: 'task1', cwd: '/remote', name: 'task', command: 'cmd', status: 'running', startedAt: 42, outputFile: '/remote/out', outputBytes: 4 };
   const provider = { id: 'ssh', cwd: '/remote', spawn() { throw Error('spawn'); }, persistent: {
     async start() { calls++; return record; }, async get() { calls++; return record; }, async cancel() { calls++; throw Error('cancel'); },
     async list() { calls++; if (delayed) await new Promise<void>(r => { release = r; }); return Object.assign([{ ...record }], { diagnostics: [] }); },

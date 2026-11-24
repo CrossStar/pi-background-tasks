@@ -710,7 +710,7 @@ interface ProcessRegistryStore {
   readonly registries: Map<string, BackgroundTaskRegistry>;
 }
 
-const PROCESS_REGISTRY_STORE = Symbol.for('pi-background-tasks.process-registry.v1');
+const PROCESS_REGISTRY_STORE = Symbol.for('pi-background-tasks.process-registry.v2');
 
 function processRegistryStore(): ProcessRegistryStore {
   const root = process as NodeJS.Process & {
@@ -760,13 +760,13 @@ export function releaseProcessRegistry(
   if (store.registries.get(key) === registry) store.registries.delete(key);
 }
 
-const MONITOR_STATE = Symbol.for('pi-background-tasks.monitor-state.v1');
+const MONITOR_STATE = Symbol.for('pi-background-tasks.monitor-state.v2');
 const monitorProcess = process as NodeJS.Process & { [MONITOR_STATE]?: { pending: WeakSet<BgTask>; confirmed: WeakSet<BgTask> } };
 const monitorState = monitorProcess[MONITOR_STATE] ??= { pending: new WeakSet<BgTask>(), confirmed: new WeakSet<BgTask>() };
 const pendingRemoteAdmissions = monitorState.pending;
 
 export class BackgroundTaskRegistry {
-  private readonly taskClients = new WeakMap<BgTask, Pick<ReturnType<typeof durable.createClient>, 'get' | 'cancel'> & Partial<Pick<NonNullable<ReturnType<typeof captureRemote>>, 'id' | 'cwd' | 'root' | 'api'>>>();
+  private readonly taskClients = new WeakMap<BgTask, Pick<ReturnType<typeof durable.createClient>, 'get' | 'cancel'> & Partial<Pick<NonNullable<ReturnType<typeof captureRemote>>, 'id' | 'cwd' | 'root' | 'api' | 'release'>>>();
   private readonly durableClient: ReturnType<typeof durable.createClient>;
   private readonly durableEnabled: boolean;
   private readonly restoredDurable = new WeakSet<BgTask>();
@@ -855,6 +855,7 @@ export class BackgroundTaskRegistry {
     this.shuttingDown = value;
     if (value) {
       for (const task of this.tasks.values()) {
+        this.taskClients.get(task)?.release?.();
         if (this.durableTasks.has(task)) this.restoredDurable.add(task);
       }
     }
@@ -865,6 +866,7 @@ export class BackgroundTaskRegistry {
   }
 
   detachHost(): void {
+    for (const task of this.tasks.values()) this.taskClients.get(task)?.release?.();
     this.hostBound = false;
     this.durablePollGeneration++;
     if (this.durablePoll) clearTimeout(this.durablePoll);
@@ -935,6 +937,8 @@ export class BackgroundTaskRegistry {
     }
     await monitorExclusion(root, localCwd, owner, task.execution.id, client.cwd, task.id, task.startTime).persist();
     if (this.tasks.get(task.id) === task) {
+      client.release?.(task.id);
+      this.durableTasks.delete(task);
       this.tasks.delete(task.id);
       this.notificationRetries.delete(task);
       if (task.terminalPublishRetryHandle) clearTimeout(task.terminalPublishRetryHandle);
@@ -1072,6 +1076,13 @@ export class BackgroundTaskRegistry {
     if (record.ownerSession !== this.ownerSession || task.ownerSession !== this.ownerSession) throw new Error('Persistent task owner mismatch');
     this.durableRefreshFailures.delete(task);
     if (task.status !== 'running') return;
+    task.sources = record.sources;
+    task.name = record.name;
+    task.command = record.command;
+    task.description = record.description;
+    if (record.notifyOnCompletion !== undefined) task.notifyOnCompletion = record.notifyOnCompletion;
+    if (record.triggerOnCompletion !== undefined) task.triggerOnCompletion = record.triggerOnCompletion;
+    task.slurm = record.slurm;
     task.lifetime = 'persistent';
     if (task.execution?.kind !== 'external') task.execution = { kind: 'local', id: 'local', cwd: record.cwd };
     task.metadataAbsPath = task.execution?.kind === 'external' ? `${record.outputFile}.json` : join(record.outputFile, '..', 'record.json');
@@ -1223,8 +1234,10 @@ export class BackgroundTaskRegistry {
       ? { kind: 'external' as const, id: execution.id ?? 'external', ...(execution.cwd !== undefined ? { cwd: execution.cwd } : {}) }
       : { kind: 'local' as const, id: 'local', cwd: admittedCwd };
     const isAgent = options.isAgent ?? false;
+    if (options.slurm && (isAgent || (!execution && !options.localSlurm) || (execution && !execution.persistent) || (!execution && !this.durableEnabled)))
+      throw new Error('Slurm attach requires a persistent remote provider or explicit localSlurm:true');
     if (execution && isAgent) throw new Error('External bg_run requires isAgent:false');
-    const remote = execution ? captureRemote(execution, admittedCwd, this.maxOutputBytes, ownerSession, record => this.tasks.get(record.id) !== task || task.ownerSession !== record.ownerSession || task.execution?.id !== descriptor.id || task.execution.cwd !== record.cwd || (!pendingRemoteAdmissions.has(task) && task.startTime !== record.startedAt)) : undefined;
+    let remote = execution ? captureRemote(execution, admittedCwd, this.maxOutputBytes, ownerSession, record => this.tasks.get(record.id) !== task || task.ownerSession !== record.ownerSession || task.execution?.id !== descriptor.id || task.execution.cwd !== record.cwd || (!pendingRemoteAdmissions.has(task) && task.startTime !== record.startedAt)) : undefined;
     const externalSpawn = execution?.spawn.bind(execution);
     const baseInvocation = execution
       ? { shell: '', args: [], dialect: 'posix' as const, windowsVerbatimArguments: false }
@@ -1294,17 +1307,34 @@ export class BackgroundTaskRegistry {
       this.scheduleDurablePoll();
       try {
         const record = await remote.api.start({ id, cwd: remote.cwd, name: taskName,
-          command: normalizedCommand, description, timeoutSeconds: timeoutSeconds ?? 0,
+          command: normalizedCommand, description, sources: options.sources, slurm: options.slurm, timeoutSeconds: timeoutSeconds ?? 0,
           maxOutputBytes: this.maxOutputBytes, ownerSession,
           notifyOnCompletion: task.notifyOnCompletion, triggerOnCompletion: task.triggerOnCompletion });
-        if (record.id !== id) throw new Error('Remote task ID mismatch');
+        if (record.id !== id) {
+          if (!options.slurm) throw new Error('Remote task ID mismatch');
+          this.tasks.delete(id);
+          const existing = this.tasks.get(record.id);
+          if (existing) { this.durableTasks.delete(task); this.taskClients.delete(task); return existing; }
+          task.id = record.id;
+          this.tasks.set(task.id, task);
+          if (record.cwd !== remote.cwd) {
+            descriptor.cwd = record.cwd;
+            task.cwd = record.cwd;
+            const original = remote;
+            const rebound = captureRemote({id: original.id, cwd: record.cwd, persistent: original.api, spawn() { throw new Error('Persistent monitor cannot spawn'); }}, admittedCwd, this.maxOutputBytes, ownerSession,
+              value => this.tasks.get(value.id) !== task || task.ownerSession !== value.ownerSession || (!pendingRemoteAdmissions.has(task) && task.startTime !== value.startedAt));
+            if (!rebound) throw new Error('Persistent monitor client unavailable');
+            remote = rebound;
+            this.taskClients.set(task, remote);
+          }
+        }
         this.applyDurableRecord(task, await remote.adapt(record));
       } catch (error) {
-        if (this.tasks.get(id) !== task) return task;
-        try { this.applyDurableRecord(task, await remote.get(id)); }
+        if (this.tasks.get(task.id) !== task) return task;
+        try { this.applyDurableRecord(task, await remote.get(task.id)); }
         catch {
-          if (this.tasks.get(id) !== task) return task;
-          task.error = `Admission uncertain for task ${id}: ${String(error)}. Inspect this ID; do not retry the command.`;
+          if (this.tasks.get(task.id) !== task) return task;
+          task.error = `Admission uncertain for task ${task.id}: ${String(error)}. Inspect this ID; do not retry the command.`;
           this.onChange();
           throw new Error(task.error);
         }
@@ -1322,6 +1352,8 @@ export class BackgroundTaskRegistry {
       try {
         const record = await this.durableClient.start({
           id,
+          sources: options.sources,
+          slurm: options.slurm,
           cwd: admittedCwd,
           name: taskName,
           command: normalizedCommand,
@@ -1336,6 +1368,13 @@ export class BackgroundTaskRegistry {
           notifyOnCompletion: task.notifyOnCompletion,
           triggerOnCompletion: task.triggerOnCompletion,
         });
+        if (record.id !== id && options.slurm) {
+          this.tasks.delete(id);
+          const existing = this.tasks.get(record.id);
+          if (existing) { this.durableTasks.delete(task); this.taskClients.delete(task); return existing; }
+          task.id = record.id;
+          this.tasks.set(task.id, task);
+        }
         this.applyDurableRecord(task, record);
       } catch (error) {
         if (error instanceof Error && /^(Invalid start request|Invalid task id|Task metadata exceeds 12000 byte limit)$/.test(error.message)) {
@@ -1981,7 +2020,29 @@ export class BackgroundTaskRegistry {
     task: BgTask,
     maxBytes: number,
     tail: boolean,
+    sourceId?: string,
   ): Promise<{ text: string; details: BgLogsDetails }> {
+    let selected = sourceId === undefined ? task.sources?.find(source => source.kind === 'digest') : task.sources?.find(source => source.id === sourceId);
+    if (!selected && task.slurm && sourceId && /^array-\d+-(stdout|stderr)$/.test(sourceId)) selected = {id: sourceId, label: sourceId, kind: 'file', location: 'remote', path: `Slurm ${task.slurm.jobId} ${sourceId}`};
+    if (sourceId !== undefined && !selected) throw new Error('Unregistered log source');
+    if (selected && selected.kind !== 'digest') {
+      const api = this.taskClients.get(task)?.api ?? this.durableClient;
+      const limit = Math.min(49152, Math.max(1, maxBytes));
+      try {
+        const first = await api.logs(task.id, 0, 1, task.ownerSession, selected.id);
+        const offset = tail ? Math.max(0, first.size - limit) : 0;
+        const response = await api.logs(task.id, offset, limit, task.ownerSession, selected.id);
+        const bytes = Buffer.from(response.data, 'base64');
+        if (bytes.toString('base64') !== response.data || bytes.length > limit || response.nextOffset !== offset + bytes.length) throw new Error('Invalid source range response');
+        return {text: `${bytes.toString('utf8')}\n[Source ${selected.label}; bytes ${offset}..${response.nextOffset} of ${response.size}; fetched ${new Date().toISOString()}; full file: ${selected.path}]`,
+          details: {task: snapshot(task), path: selected.path, bytesRead: bytes.length, truncated: bytes.length < response.size, tail}};
+      } catch (error) {
+        if (!selected.mirrorPath) throw error;
+        const cached = await boundedRead(selected.mirrorPath, limit, tail);
+        return {text: `${cached.content}\n[Offline mirror cached as of ${new Date(selected.cachedAt ?? 0).toISOString()}; refresh failed: ${String(error)}]`,
+          details: {task: snapshot(task), path: selected.path, bytesRead: cached.bytesRead, truncated: true, tail}};
+      }
+    }
     if (!existsSync(task.outputAbsPath)) {
       throw new Error(`Output file does not exist for ${task.id}: ${task.outputPath}`);
     }

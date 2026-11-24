@@ -9,15 +9,18 @@ covers_sources: []
 ---
 # `bg_logs`
 
+`source` selects a registered source ID; omission selects digest when present, otherwise primary output. Reads stay capped at 50 KiB (individual persistent RPC ranges are at most 49,152 bytes). Use `source: "array-3-stdout"` or `"array-3-stderr"` on a Slurm monitor to discover and read one array index without tailing every index. This syntax resolves through read-only scheduler discovery, never a caller path. Full logs remain authoritative on their execution host. Cached fallback explicitly reports its timestamp and refresh error.
+
 <!-- pi-docs:begin name="tool-contract-bg_logs" generator="scripts/docs/generate.mjs" -->
 - Label: **Background Logs**
-- Source: `src/extension.ts:981`
+- Source: `src/extension.ts:1003`
 - Description: Read bounded output from a background task for deliberate inspection; this is not a waiting primitive. Output is capped at 50.0KB for model safety and points to the full output file when truncated.
 - Root schema: `object`
 
 | Field | Required | Type | Description | Constraints |
 | --- | --- | --- | --- | --- |
 | `maxBytes` | no | `number` | Maximum bytes to return, capped at 50.0KB. Default: 50.0KB. |  |
+| `source` | no | `string` | Registered source id; defaults to digest when present, otherwise primary output. |  |
 | `tail` | no | `boolean` | Read the tail of the log when true, head when false. Default: true. |  |
 | `taskId` | yes | `string` | Task ID or unambiguous prefix |  |
 
@@ -31,6 +34,10 @@ covers_sources: []
     "maxBytes": {
       "description": "Maximum bytes to return, capped at 50.0KB. Default: 50.0KB.",
       "type": "number"
+    },
+    "source": {
+      "description": "Registered source id; defaults to digest when present, otherwise primary output.",
+      "type": "string"
     },
     "tail": {
       "description": "Read the tail of the log when true, head when false. Default: true.",

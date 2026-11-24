@@ -2,7 +2,8 @@ import { killWindowsTree } from './windows-tree.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
-import { endpoint, server, load, record, atomic } from './shared.mjs';
+import { endpoint, server, load, record, atomic, rpc } from './shared.mjs';
+import { watchSlurm } from './slurm-watch.mjs';
 const id = process.argv[2];
 let input = '';
 process.stdin.setEncoding('utf8');
@@ -23,6 +24,7 @@ function launch() {
     fs.closeSync(claim);
     atomic(record(id), original); // flush the claim's parent directory as well
     const address = endpoint(original.capability);
+    const monitorAbort = new AbortController();
     let child, fd, reason, outputError, timeout, escalation, deadline;
     let windowsKill;
     let groupOwned = false;
@@ -54,6 +56,11 @@ function launch() {
         if (finished)
             return;
         reason ??= cause;
+        if (original.slurm) {
+            monitorAbort.abort();
+            void finish(0, null);
+            return;
+        }
         cancellationDeadline ||= Date.now() + 3000;
         if (process.platform === 'win32') {
             if (!windowsKill) {
@@ -139,7 +146,7 @@ function launch() {
             stop('output-error');
             return;
         }
-        if (slice.length < data.length)
+        if (slice.length < data.length && !original.slurm)
             stop('output-cap');
     }
     control.on('error', error => finish(null, null, error));
@@ -148,6 +155,13 @@ function launch() {
             if (!address.startsWith('\0') && process.platform !== 'win32')
                 fs.chmodSync(address, 0o600);
             fd = fs.openSync(original.outputFile, 'a', 0o600);
+            if (original.slurm) {
+                const call = (method, params) => rpc(endpoint('daemon'), method, {...params, id, capability: original.capability});
+                void watchSlurm({record: original, call, output, signal: monitorAbort.signal, budget: request.outputCapBytes})
+                    .then(code => finish(code, null), error => finish(null, null, error));
+                if (request.timeoutMs) timeout = setTimeout(() => stop('timeout'), request.timeoutMs);
+                return;
+            }
             child = spawn(request.shellExecutable, request.shellArgs, {
                 windowsHide: true, cwd: request.cwd, env: request.environment, detached: process.platform !== 'win32', windowsVerbatimArguments: request.windowsVerbatimArguments === true, stdio: ['ignore', 'pipe', 'pipe'],
             });

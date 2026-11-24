@@ -5,6 +5,8 @@ export const BG_EXECUTION_HOOK_CHANNEL = 'sydney-kit:bg-hook:v1';
 export const BG_PERSISTENT_READY_CHANNEL = 'sydney-kit:bg-persistent-ready:v1';
 
 export interface PersistentRemoteStart {
+  sources?: import('../persistent/client.ts').LogSource[] | undefined;
+  slurm?: import('../persistent/client.ts').SlurmAttach | undefined;
   id: string;
   cwd: string;
   name: string;
@@ -28,7 +30,8 @@ export interface PersistentRemoteExecution {
   get(id: string, ownerSession?: string): Promise<import('../persistent/client.ts').TaskRecord>;
   list(cwd: string, ownerSession?: string): Promise<import('../persistent/client.ts').TaskList>;
   cancel(id: string, ownerSession?: string): Promise<import('../persistent/client.ts').TaskRecord>;
-  logs(id: string, offset: number, maxBytes: number, ownerSession?: string): Promise<PersistentRemoteLogs>;
+  mirrorLogs?(id: string, offset: number, maxBytes: number, ownerSession?: string, source?: string): Promise<PersistentRemoteLogs>;
+  logs(id: string, offset: number, maxBytes: number, ownerSession?: string, source?: string): Promise<PersistentRemoteLogs>;
 }
 
 

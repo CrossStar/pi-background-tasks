@@ -5,9 +5,10 @@ import path from 'node:path';
 import os from 'node:os';
 export const MAX_FRAME = 1048576;
 export function serviceRoot() {
-    return path.resolve(process.env.PI_BG_SERVICE_DIR || path.join(os.homedir(), '.pi/background-tasks'));
+    return path.resolve(process.env.PI_BG_SERVICE_DIR || path.join(os.homedir(), '.pi/background-tasks-v2'));
 }
 export const root = serviceRoot();
+export const DAEMON_KEY = 'daemon';
 export function privateDir(directory) {
     fs.mkdirSync(directory, { recursive: true, mode: 0o700 });
     const stat = fs.lstatSync(directory);
@@ -71,7 +72,7 @@ export function rpc(address, method, params, directory = root) {
     return new Promise((resolve, reject) => {
         let outgoing;
         try {
-            outgoing = frame({ version: 1, token: token(directory), method, params });
+            outgoing = frame({ version: 2, token: token(directory), method, params });
         }
         catch (error) {
             reject(error);
@@ -117,7 +118,7 @@ export function server(handler) {
             socket.removeAllListeners('data');
             try {
                 const request = JSON.parse(text.split('\n')[0]);
-                if (request.token !== token(root) || request.version !== 1)
+                if (request.token !== token(root) || request.version !== 2)
                     throw Error('Unauthorized or unsupported protocol');
                 socket.end(frame({ result: await handler(request.method, request.params) }));
             }

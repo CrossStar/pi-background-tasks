@@ -208,6 +208,7 @@ export class BackgroundTasksManager implements Component {
   }
   private disposed = false;
   private previewId: string | undefined;
+  private sourceSelection: string | undefined;
   private reading = false;
   private readGeneration = 0;
   private pendingLines = 0;
@@ -311,6 +312,19 @@ export class BackgroundTasksManager implements Component {
       return;
     }
     const selected = this.mode === 'detail' ? this.detailTask() : this.currentTasks()[this.selectedIndex];
+    if (this.mode === 'detail' && selected?.sources?.length && ['[', ']', 'm'].includes(data)) {
+      const ids = [undefined, ...selected.sources.filter(source => source.kind !== 'digest' && !source.pattern).map(source => source.id)];
+      const index = ids.indexOf(this.sourceSelection);
+      this.sourceSelection = data === 'm' ? '*' : ids[(index + (data === '[' ? ids.length - 1 : 1)) % ids.length];
+      this.readGeneration++;
+      this.detailFollow = true;
+      this.detailScrollTop = 0;
+      this.searchController?.abort();
+      this.searchMessage = '';
+      void this.refreshTail();
+      this.tui.requestRender();
+      return;
+    }
     if (data === 'v' && selected) {
       this.commandTask = selected;
       this.commandScroll = 0;
@@ -554,6 +568,7 @@ export class BackgroundTasksManager implements Component {
     this.searchOffset = undefined;
     this.pendingLines = 0;
     this.detailTaskId = taskId;
+    this.sourceSelection = undefined;
     this.mode = 'detail';
     this.detailLines = [];
     this.detailFollow = true;
@@ -666,6 +681,31 @@ export class BackgroundTasksManager implements Component {
     const current = () => !this.disposed && generation === this.readGeneration && task.id === this.detailTaskId;
     this.reading = true;
     try {
+      if (this.sourceSelection && task.sources?.length) {
+        if (!this.detailFollow) return;
+        const sources = task.sources.filter(source => !source.pattern && (this.sourceSelection === '*' || source.id === this.sourceSelection));
+        const rows: string[] = [];
+        let bytesRead = 0, totalBytes = 0;
+        for (const source of sources) {
+          rows.push(`[${source.label}] ${source.cachedAt ? `cached as of ${new Date(source.cachedAt).toISOString()}` : 'local source'} · [ ] switch · m merged`);
+          if (source.readError) rows.push(`[${source.label}] refresh error: ${source.readError}`);
+          if (source.ranges) rows.push(`[${source.label}] cached ranges ${source.ranges.map(range => `${range.start}..${range.end}`).join(', ')} of ${source.size}; other bytes omitted`);
+          try {
+            const file = source.mirrorPath ?? (source.location === 'local' ? source.path : undefined);
+            if (!file) throw new Error('No cached mirror available');
+            const read = await boundedRead(file, Math.max(1, Math.floor(DETAIL_TAIL_BYTES / sources.length)), true);
+            bytesRead += read.bytesRead; totalBytes += read.totalBytes;
+            if (read.truncated) rows.push(`[${source.label}] display begins at mirror byte ${read.totalBytes - read.bytesRead}; earlier bytes omitted`);
+            rows.push(...toOutputLines(read.content).map(line => `[${sanitizeDisplay(source.label)}] ${line}`));
+          } catch (error) { rows.push(`[${source.label}] ${String(error)}`); }
+        }
+        if (!current()) return;
+        this.detailLines = rows.map(row => sanitizeDisplay(row));
+        this.tailBytesRead = bytesRead; this.tailTotalBytes = totalBytes;
+        this.tailTruncated = bytesRead < totalBytes;
+        this.tailError = undefined;
+        return;
+      }
       if (!existsSync(task.outputAbsPath)) {
         this.detailLines = [];
         this.tailError = `Output file not found: ${task.outputPath}`;

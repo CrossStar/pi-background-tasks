@@ -13,7 +13,7 @@
       "state": "pass"
     },
     {
-      "authored_body_sha256": "sha256:8ce0d2abda6bc54218c8dbfbe96945e65427139143eb4cae1af785fe22fa6a7e",
+      "authored_body_sha256": "sha256:6b3a52745ffd9ba84bbb665af4b1fc8499ab5c7737625a1a07ff6c16c23596ab",
       "covers_sources": [
         "src/core/execution-backend.ts"
       ],
@@ -23,7 +23,7 @@
       "state": "missing"
     },
     {
-      "authored_body_sha256": "sha256:6a624c6cd11c3227e69b3a5c5c0586ac18b629cd09d251a0621e1ad3104984d7",
+      "authored_body_sha256": "sha256:0ae585b598d21c74be74a24278c494affffbeb5529d2da9df38e54dbf7fe1a08",
       "covers_sources": [
         "src/core/persistent-runtime.ts",
         "src/core/remote-persistent.ts"
@@ -57,7 +57,7 @@
       "state": "stale-authored-prose"
     },
     {
-      "authored_body_sha256": "sha256:61691ecfc018834bdef32eaa4f6bd1133e0ffed6204540962ceb7f168d604950",
+      "authored_body_sha256": "sha256:1903a04bfb1a52bea75e66423a543584fed3f4d61a3cf75f87d19ccc0809afff",
       "covers_sources": [
         "src/core/common.ts",
         "src/core/monitor-exclusion.ts",
@@ -83,7 +83,7 @@
       "state": "stale-authored-prose"
     },
     {
-      "authored_body_sha256": "sha256:4b892967b8c71fe4d9b333827640a96e76340aeef00c925ce36bce7adad17647",
+      "authored_body_sha256": "sha256:3a7eec4866c7247a1c729fe6b47f9f4de0bd6fbf3390bc2972a8c2db6840d6d9",
       "covers_sources": [
         "extensions/background-tasks.ts",
         "src/core/completion-receipt.ts",
@@ -100,13 +100,15 @@
       "state": "stale-authored-prose"
     },
     {
-      "authored_body_sha256": "sha256:1a4f2d30c4cada131cc74943fc439b000cfda31117cbe9e17ae3b25de0bf1ae8",
+      "authored_body_sha256": "sha256:e09771e1fd49b29fdfc60542883d8738bdddd3ebcfb0dd939f254b2c8147cb4c",
       "covers_sources": [
         "src/persistent/client.ts",
         "src/persistent/daemon.mjs",
+        "src/persistent/log-sources.mjs",
         "src/persistent/remote-bridge.mjs",
         "src/persistent/shared.d.mts",
         "src/persistent/shared.mjs",
+        "src/persistent/slurm-watch.mjs",
         "src/persistent/supervisor.mjs",
         "src/persistent/windows-tree.mjs"
       ],
@@ -492,9 +494,11 @@
       "covers_sources": [
         "src/persistent/client.ts",
         "src/persistent/daemon.mjs",
+        "src/persistent/log-sources.mjs",
         "src/persistent/remote-bridge.mjs",
         "src/persistent/shared.d.mts",
         "src/persistent/shared.mjs",
+        "src/persistent/slurm-watch.mjs",
         "src/persistent/supervisor.mjs",
         "src/persistent/windows-tree.mjs"
       ],
@@ -733,35 +737,35 @@
         "id": "command:bg",
         "kind": "command",
         "name": "bg",
-        "source": "src/extension.ts:617"
+        "source": "src/extension.ts:621"
       },
       {
         "description": "Forget one persistent remote task monitor by exact ID without stopping the task",
         "id": "command:bg_forget",
         "kind": "command",
         "name": "bg_forget",
-        "source": "src/extension.ts:659"
+        "source": "src/extension.ts:663"
       },
       {
         "description": "Clear finished background task footer notices",
         "id": "command:bg-clear",
         "kind": "command",
         "name": "bg-clear",
-        "source": "src/extension.ts:677"
+        "source": "src/extension.ts:681"
       },
       {
         "description": "Open the background task manager UI",
         "id": "command:bg-tasks",
         "kind": "command",
         "name": "bg-tasks",
-        "source": "src/extension.ts:651"
+        "source": "src/extension.ts:655"
       },
       {
         "description": "Show how to update pi-background-tasks to the latest published version",
         "id": "command:bg-update",
         "kind": "command",
         "name": "bg-update",
-        "source": "src/extension.ts:685"
+        "source": "src/extension.ts:689"
       },
       {
         "description": "Show or set Claude cache retention for this session (short, long, default)",
@@ -775,28 +779,28 @@
         "id": "command:jobs",
         "kind": "command",
         "name": "jobs",
-        "source": "src/extension.ts:723"
+        "source": "src/extension.ts:727"
       },
       {
         "description": "Stop a running background task: /kill <id>",
         "id": "command:kill",
         "kind": "command",
         "name": "kill",
-        "source": "src/extension.ts:767"
+        "source": "src/extension.ts:771"
       },
       {
         "description": "Show bounded output from a background task: /logs <id> [maxBytes]",
         "id": "command:logs",
         "kind": "command",
         "name": "logs",
-        "source": "src/extension.ts:736"
+        "source": "src/extension.ts:740"
       },
       {
         "description": "Open the Claude-like background task manager UI",
         "id": "command:tasks",
         "kind": "command",
         "name": "tasks",
-        "source": "src/extension.ts:643"
+        "source": "src/extension.ts:647"
       }
     ],
     "eventbus": [
@@ -824,7 +828,7 @@
         "id": "renderer:background-task-notification",
         "kind": "renderer",
         "name": "background-task-notification",
-        "source": "src/extension.ts:477"
+        "source": "src/extension.ts:481"
       }
     ],
     "shortcut": [
@@ -833,14 +837,14 @@
         "id": "shortcut:ctrl+alt+c",
         "kind": "shortcut",
         "name": "ctrl+alt+c",
-        "source": "src/extension.ts:715"
+        "source": "src/extension.ts:719"
       },
       {
         "description": "Open focused background task footer dock",
         "id": "shortcut:shift+down",
         "kind": "shortcut",
         "name": "shift+down",
-        "source": "src/extension.ts:708"
+        "source": "src/extension.ts:712"
       }
     ],
     "tool": [
@@ -866,7 +870,7 @@
           ],
           "type": "object"
         },
-        "source": "src/extension.ts:1026"
+        "source": "src/extension.ts:1049"
       },
       {
         "description": "Read bounded output from a background task for deliberate inspection; this is not a waiting primitive. Output is capped at 50.0KB for model safety and points to the full output file when truncated.",
@@ -886,6 +890,10 @@
               "description": "Maximum bytes to return, capped at 50.0KB. Default: 50.0KB.",
               "type": "number"
             },
+            "source": {
+              "description": "Registered source id; defaults to digest when present, otherwise primary output.",
+              "type": "string"
+            },
             "tail": {
               "description": "Read the tail of the log when true, head when false. Default: true.",
               "type": "boolean"
@@ -900,10 +908,10 @@
           ],
           "type": "object"
         },
-        "source": "src/extension.ts:981"
+        "source": "src/extension.ts:1003"
       },
       {
-        "description": "Start a named long-running shell command in the background and return immediately with a task ID and output path. By default, completed, failed, or killed terminal state is delivered automatically as <background-task-notification> and starts a follow-up agent turn; do not sleep or poll merely to wait. Output is written to .pi/tasks and model-visible logs are bounded to 50.0KB.",
+        "description": "Start a named long-running shell command or attach a read-only Slurm monitor in the background and return immediately with a task ID and output path. By default, completed, failed, or killed terminal state is delivered automatically as <background-task-notification> and starts a follow-up agent turn; do not sleep or poll merely to wait. Output is written to .pi/tasks and model-visible logs are bounded to 50.0KB.",
         "id": "tool:bg_run",
         "kind": "tool",
         "label": "Background Run",
@@ -921,8 +929,25 @@
         "promptSnippet": "Start a named long-running shell command; default terminal notification wakes a follow-up turn, so yield instead of polling",
         "schema": {
           "properties": {
+            "attach": {
+              "properties": {
+                "arrayTaskId": {
+                  "minimum": 0,
+                  "multipleOf": 1,
+                  "type": "number"
+                },
+                "jobId": {
+                  "pattern": "^\\d+$",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "jobId"
+              ],
+              "type": "object"
+            },
             "command": {
-              "description": "Shell command to start in the background",
+              "description": "Shell command; required for shell kind, forbidden for slurm",
               "type": "string"
             },
             "description": {
@@ -930,11 +955,44 @@
               "type": "string"
             },
             "isAgent": {
-              "description": "Required. Set true only when this background task launches an LLM/agent process, such as a child `pi -p ...` or `pi --mode json ...`, so Pi-agent telemetry can be collected. Set false for scripts, tests, servers, sleeps, and ordinary shell commands.",
+              "description": "Required for shell commands. Set true only for LLM/agent processes; false for scripts, tests, servers and ordinary commands. Slurm attachments always use false.",
               "type": "boolean"
             },
+            "keyPattern": {
+              "description": "Case-insensitive digest key-line regular expression.",
+              "type": "string"
+            },
+            "kind": {
+              "enum": [
+                "shell",
+                "slurm"
+              ],
+              "type": "string"
+            },
+            "localSlurm": {
+              "description": "Explicitly allow a local Slurm installation; never falls back from remote.",
+              "type": "boolean"
+            },
+            "logs": {
+              "properties": {
+                "extra": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "files": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              },
+              "required": [],
+              "type": "object"
+            },
             "name": {
-              "description": "Short human-readable task name shown in the bg footer dock. Required; use 2-6 words, not the raw command.",
+              "description": "Short human-readable task name; defaults to Slurm job id for attachments.",
               "type": "string"
             },
             "notifyOnCompletion": {
@@ -950,14 +1008,10 @@
               "type": "boolean"
             }
           },
-          "required": [
-            "command",
-            "isAgent",
-            "name"
-          ],
+          "required": [],
           "type": "object"
         },
-        "source": "src/extension.ts:800"
+        "source": "src/extension.ts:804"
       },
       {
         "description": "Opt-in evidence-oriented direct Pi spawn. Launches exactly one `pi --mode json` child, records raw Pi events/stderr, hashes prompt/report/output, observes OAuth through ModelRegistry, and emits a strict attestation sidecar only after successful completion.",
@@ -1018,7 +1072,7 @@
           ],
           "type": "object"
         },
-        "source": "src/extension.ts:885"
+        "source": "src/extension.ts:907"
       },
       {
         "description": "Inspect one background task or list all running/recent background tasks. This is a point-in-time inspection tool, not a waiting primitive.",
@@ -1042,7 +1096,7 @@
           "required": [],
           "type": "object"
         },
-        "source": "src/extension.ts:950"
+        "source": "src/extension.ts:972"
       }
     ],
     "workflow": []
@@ -1109,6 +1163,9 @@
     "src/persistent/daemon.mjs": [
       "subsystems/persistent-runtime"
     ],
+    "src/persistent/log-sources.mjs": [
+      "subsystems/persistent-runtime"
+    ],
     "src/persistent/remote-bridge.mjs": [
       "subsystems/persistent-runtime"
     ],
@@ -1116,6 +1173,9 @@
       "subsystems/persistent-runtime"
     ],
     "src/persistent/shared.mjs": [
+      "subsystems/persistent-runtime"
+    ],
+    "src/persistent/slurm-watch.mjs": [
       "subsystems/persistent-runtime"
     ],
     "src/persistent/supervisor.mjs": [

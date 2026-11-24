@@ -22,9 +22,9 @@ test('scoped client rejects old daemon without sending operations or replacing i
     await new Promise<void>(resolve=>service.listen(endpoint('daemon',root),resolve));
     try {
         const client = createClient({root});
-        await assert.rejects(client.get('a','A'),/lacks session ownership/);
-        await assert.rejects(client.cancel('a','A'),/lacks session ownership/);
-        await assert.rejects(client.list(root,'A'),/lacks session ownership/);
+        await assert.rejects(client.get('a','A'),/Unsupported persistent protocol/);
+        await assert.rejects(client.cancel('a','A'),/Unsupported persistent protocol/);
+        await assert.rejects(client.list(root,'A'),/Unsupported persistent protocol/);
         assert.ok(methods.every(method=>method==='ping'));
         assert.ok(service.listening);
     } finally {

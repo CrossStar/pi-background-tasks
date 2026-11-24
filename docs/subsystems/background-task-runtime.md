@@ -71,6 +71,8 @@ Terminal delivery is eligible only after terminal metadata has been persisted an
 
 ## Reload handoff
 
+Protocol 2 uses a separate process-global registry key as well as separate disk service namespaces. The first reload from v1 does not inherit old-service monitors. Subsequent v2 reloads retain the same v2 registry normally.
+
 On `session_shutdown` with reason `reload`, the host detaches stale Pi callbacks without setting shutdown state or stopping tasks. Live child handles, timers, managed cancellation hooks, output streams, and task identity remain in the process-global registry. The replacement runtime acquires that registry during `session_start`, installs a fresh EventBus service, and rebinds callbacks before normal use. A task that reaches terminal state during the short detached interval keeps notification and terminal publication pending; rebinding retries those deliveries rather than marking them sent to a stale runtime.
 
 Production local non-agent commands use the per-user daemon and a detached per-task supervisor. Their logs and records live in stable service storage, discovered by project cwd and ownerSession on session start. The supervisor owns output, timeout, cancellation, and terminal metadata; the registry never opens their output stream or rewrites their metadata. Polling is bounded and uses unreferenced timers. Shutdown detaches polling and leaves these commands running. Cancellation waits for a verified terminal record; unknown outcomes remain `failed` with a diagnostic.

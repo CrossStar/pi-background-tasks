@@ -2,7 +2,19 @@ import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { rpc, endpoint, serviceRoot, privateDir } from './shared.mjs';
+export interface LogSource {
+    id: string; label: string; kind: 'stdout' | 'stderr' | 'file' | 'digest';
+    location: 'local' | 'remote'; path: string; pattern?: string;
+    readError?: string;
+    cachedAt?: number; mirrorPath?: string; ranges?: Array<{start: number; end: number}>; size?: number;
+}
+export interface SlurmAttach {
+    jobId: string; arrayTaskId?: number; keyPattern?: string;
+    logs?: {files?: string[]; extra?: string[]};
+}
 export interface StartRequest {
+    sources?: LogSource[] | undefined;
+    slurm?: SlurmAttach | undefined;
     id: string;
     cwd: string;
     name: string;
@@ -21,6 +33,8 @@ export interface StartRequest {
 export interface AdmissionDiagnostic { id: string; message: string }
 export interface TaskList extends Array<TaskRecord> { diagnostics: AdmissionDiagnostic[] }
 export interface TaskRecord {
+    sources?: LogSource[];
+    slurm?: SlurmAttach;
     id: string;
     cwd: string;
     name: string;
@@ -73,10 +87,11 @@ export function createClient(options: {
     async function ensureService(): Promise<void> {
         privateDir(root);
         try {
-            await transport('ping', {});
+            const identity = await transport('ping', {}) as {protocolVersion?: number};
+            if (identity.protocolVersion !== 2) throw Error('Unsupported persistent protocol; v2 required');
             return;
         }
-        catch { }
+        catch (error) { if (!['ECONNREFUSED', 'ENOENT'].includes((error as NodeJS.ErrnoException).code ?? '')) throw error; }
         const child = spawn(process.execPath, [fileURLToPath(new URL('./daemon.mjs', import.meta.url))], {
             windowsHide: true, detached: true, stdio: 'ignore', env: { ...process.env, PI_BG_SERVICE_DIR: root },
         });
@@ -103,7 +118,10 @@ export function createClient(options: {
     }
     return {
         ensureService,
-        async start(request: StartRequest) { return validateRecord(await call('start', request), root, request.id, request.ownerSession); },
+        async logs(id: string, offset: number, maxBytes: number, ownerSession?: string, source?: string) {
+            return await call('logs', {id, offset, maxBytes, ownerSession, source}) as {data: string; nextOffset: number; size: number; eof: boolean; identity: string; cachedAt: number};
+        },
+        async start(request: StartRequest) { return validateRecord(await call('start', request), root, request.slurm ? undefined : request.id, request.ownerSession); },
         async get(id: string, ownerSession?: string) { return validateRecord(await call('get', { id, ownerSession }), root, id, ownerSession); },
         async cancel(id: string, ownerSession?: string) { return validateRecord(await call('cancel', { id, ownerSession }), root, id, ownerSession); },
         async list(cwd?: string, ownerSession?: string) {

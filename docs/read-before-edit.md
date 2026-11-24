@@ -25,6 +25,7 @@ Every production file under `src/**` and `extensions/**` has exactly one primary
 | `src/core/durable-fs.ts` | [subsystems/child-launch-durability-and-safety](./subsystems/child-launch-durability-and-safety.md) |
 | `src/core/execution-backend.ts` | [api/execution-backends-v1](./api/execution-backends-v1.md) |
 | `src/core/extension-api.ts` | [api/eventbus-v1](./api/eventbus-v1.md) |
+| `src/core/monitor-exclusion.ts` | [subsystems/background-task-runtime](./subsystems/background-task-runtime.md) |
 | `src/core/persistent-runtime.ts` | [PERSISTENT-REMOTE](./PERSISTENT-REMOTE.md) |
 | `src/core/pi-launch.ts` | [subsystems/child-launch-durability-and-safety](./subsystems/child-launch-durability-and-safety.md) |
 | `src/core/registry.ts` | [subsystems/background-task-runtime](./subsystems/background-task-runtime.md) |
@@ -49,6 +50,7 @@ Every production file under `src/**` and `extensions/**` has exactly one primary
 - `command:bg-clear`
 - `command:bg-tasks`
 - `command:bg-update`
+- `command:bg_forget`
 - `command:claude-cache`
 - `command:jobs`
 - `command:kill`

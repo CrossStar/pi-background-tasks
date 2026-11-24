@@ -15,7 +15,7 @@ This subsystem owns the extension entrypoint, command/tool registration, footer 
 
 `extensions/background-tasks.ts` re-exports `src/extension.ts`. The extension registers:
 
-- commands: `/bg`, `/tasks`, `/bg-tasks`, `/bg-clear`, `/bg-update`, `/jobs`, `/logs`, `/kill`;
+- commands: `/bg`, `/tasks`, `/bg-tasks`, `/bg-clear`, `/bg_forget`, `/bg-update`, `/jobs`, `/logs`, `/kill`;
 - tools: `bg_run`, `bg_status`, `bg_logs`, `bg_kill` plus package-owned advanced tools documented elsewhere;
 - shortcuts: `shift+down` and `ctrl+alt+c`;
 - renderer: `background-task-notification`.
@@ -66,6 +66,10 @@ Detail output semantics:
 `v` opens a full-command view from either the list or detail. It wraps the complete command to terminal width, preserves explicit line breaks, and pages within the available height. Arrows and PgUp/PgDn scroll, Home/End jump, `y` copies the unchanged command, and Esc returns to the previous view without closing the monitor.
 
 `/` opens a literal, case-sensitive search input. Enter searches the full file using bounded 64 KiB reads against the size observed when search starts. Queries are limited to 4096 UTF-8 bytes. A match displays a bounded 16 KiB excerpt beginning at the matched byte, with the byte offset shown; `n` and `N` find subsequent/previous matches without wrapping. Searching does not load the whole file into memory. Switching tasks, following again, or closing cancels pending search and prevents stale results replacing another task's output. `y` copies the command, `p` copies the absolute output path, and `o` opens the complete log in the host's default application. Failures remain visible inside the monitor.
+
+## Local monitor removal
+
+[`/bg_forget`](../commands/bg-forget.md) takes one exact task ID and delegates to the registry's local-only persistent remote monitor removal. Successful removal refreshes the footer and task list and explicitly states that remote execution continues and historical logs are retained. Errors are shown without falling back to remote cancellation.
 
 ## Completion rendering
 

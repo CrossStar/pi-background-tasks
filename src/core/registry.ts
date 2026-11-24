@@ -1,8 +1,10 @@
+import { monitorExclusion } from './monitor-exclusion.ts';
+import { dirname } from 'node:path';
 import { captureRemote } from './remote-persistent.ts';
 import * as durable from '../persistent/client.ts';
 import type { BackgroundExecutionResolver } from './execution-backend.ts';
 import { spawn as nodeSpawn, type SpawnOptions } from 'node:child_process';
-import { randomBytes } from 'node:crypto';
+import { randomBytes, createHash } from 'node:crypto';
 import { createWriteStream, existsSync } from 'node:fs';
 import { mkdir, readFile, readdir, realpath, writeFile } from 'node:fs/promises';
 import { join, normalize, resolve } from 'node:path';
@@ -736,6 +738,12 @@ export function acquireProcessRegistry(
   const key = processRegistryKey(ctx);
   const existing = store.registries.get(key);
   if (existing !== undefined) {
+    // This upgrade adds methods only: all retained instance fields have the same
+    // layout. Detach first so callbacks captured by the previous implementation
+    // fail their generation checks before the new host is bound.
+    existing.detachHost();
+    Object.setPrototypeOf(existing, BackgroundTaskRegistry.prototype);
+    existing.upgradeRemoteMonitors();
     existing.bindSession(ctx);
     return existing;
   }
@@ -752,8 +760,13 @@ export function releaseProcessRegistry(
   if (store.registries.get(key) === registry) store.registries.delete(key);
 }
 
+const MONITOR_STATE = Symbol.for('pi-background-tasks.monitor-state.v1');
+const monitorProcess = process as NodeJS.Process & { [MONITOR_STATE]?: { pending: WeakSet<BgTask>; confirmed: WeakSet<BgTask> } };
+const monitorState = monitorProcess[MONITOR_STATE] ??= { pending: new WeakSet<BgTask>(), confirmed: new WeakSet<BgTask>() };
+const pendingRemoteAdmissions = monitorState.pending;
+
 export class BackgroundTaskRegistry {
-  private readonly taskClients = new WeakMap<BgTask, Pick<ReturnType<typeof durable.createClient>, 'get' | 'cancel'>>();
+  private readonly taskClients = new WeakMap<BgTask, Pick<ReturnType<typeof durable.createClient>, 'get' | 'cancel'> & Partial<Pick<NonNullable<ReturnType<typeof captureRemote>>, 'id' | 'cwd' | 'root' | 'api'>>>();
   private readonly durableClient: ReturnType<typeof durable.createClient>;
   private readonly durableEnabled: boolean;
   private readonly restoredDurable = new WeakSet<BgTask>();
@@ -888,6 +901,53 @@ export class BackgroundTaskRegistry {
     this.pruneOldTasks();
   }
 
+  upgradeRemoteMonitors(): void {
+    for (const task of this.tasks.values()) {
+      const client = this.taskClients.get(task);
+      if (!client?.api || !client.id || !client.cwd || !client.root || !task.ownerSession || task.execution?.kind !== 'external') continue;
+      const localCwd = resolve(client.root, '../../../../');
+      const id = client.id;
+      const cwd = client.cwd;
+      const remote = captureRemote({ id, cwd, persistent: client.api, spawn() { throw new Error('Captured persistent monitor cannot spawn'); } }, localCwd, this.maxOutputBytes, task.ownerSession,
+        record => this.tasks.get(task.id) !== task || task.ownerSession !== record.ownerSession || task.execution?.id !== id || task.execution.cwd !== cwd || record.cwd !== cwd || (!pendingRemoteAdmissions.has(task) && task.startTime !== record.startedAt));
+      if (remote && remote.root === client.root) this.taskClients.set(task, remote);
+    }
+  }
+
+  async forgetTask(ctx: BackgroundTaskContext, exactFullId: string): Promise<BgTaskSnapshot> {
+    if (!this.matchesSession(ctx)) throw new Error('Background registry session mismatch');
+    const task = this.tasks.get(exactFullId);
+    if (!task || task.execution?.kind !== 'external' || task.lifetime !== 'persistent') throw new Error('Exact persistent external task ID required');
+    const client = this.taskClients.get(task);
+    const owner = this.ownerSession;
+    if (!owner || task.ownerSession !== owner || !this.durableTasks.has(task) || !client?.root ||
+        client.id !== task.execution.id || client.cwd !== task.execution.cwd || !client.cwd) throw new Error('Captured remote monitor identity mismatch');
+    if (pendingRemoteAdmissions.has(task)) throw new Error('Remote admission identity is not confirmed; wait for a valid remote record before forgetting');
+    const root = client.root;
+    const localCwd = resolve(ctx.cwd);
+    const expectedRoot = join(localCwd, '.pi', 'tasks', 'remote', createHash('sha256').update(JSON.stringify([client.id, client.cwd, owner])).digest('hex'));
+    if (resolve(root) !== expectedRoot || dirname(task.outputAbsPath) !== root) throw new Error('Background registry cache identity mismatch');
+    if (!monitorState.confirmed.has(task)) {
+      let cached: unknown;
+      try { cached = JSON.parse(await readFile(join(root, `${task.id}.output.json`), 'utf8')); }
+      catch { throw new Error('Remote admission identity cannot be confirmed from local metadata; monitor retained'); }
+      if (!isJsonObject(cached) || cached['id'] !== task.id || cached['ownerSession'] !== owner || cached['startTime'] !== task.startTime || !isJsonObject(cached['execution']) || cached['execution']['id'] !== client.id || cached['execution']['cwd'] !== client.cwd)
+        throw new Error('Remote admission identity cannot be confirmed from local metadata; monitor retained');
+      monitorState.confirmed.add(task);
+    }
+    await monitorExclusion(root, localCwd, owner, task.execution.id, client.cwd, task.id, task.startTime).persist();
+    if (this.tasks.get(task.id) === task) {
+      this.tasks.delete(task.id);
+      this.notificationRetries.delete(task);
+      if (task.terminalPublishRetryHandle) clearTimeout(task.terminalPublishRetryHandle);
+      task.terminalPublishRetryHandle = undefined;
+      this.deliveryReady.delete(task);
+      this.durableRefreshFailures.delete(task);
+      this.onChange();
+    }
+    return snapshot(task);
+  }
+
   allTasks(): BgTask[] {
     return [...this.tasks.values()];
   }
@@ -923,7 +983,13 @@ export class BackgroundTaskRegistry {
 
   private async restoreRemoteTasksOnce(ctx: BackgroundTaskContext): Promise<void> {
     const provider = this.resolveExecution?.();
-    const remote = provider ? captureRemote(provider, ctx.cwd, this.maxOutputBytes, this.bindSession(ctx)) : undefined;
+    const owner = this.bindSession(ctx);
+    const capturedEndpoint = provider?.id;
+    const capturedTasks = new Map<string, BgTask>();
+    const remote = provider ? captureRemote(provider, ctx.cwd, this.maxOutputBytes, owner, record => {
+      const task = capturedTasks.get(record.id);
+      return !task || this.tasks.get(record.id) !== task || task.ownerSession !== record.ownerSession || task.execution?.id !== capturedEndpoint || task.execution?.cwd !== record.cwd || task.startTime !== record.startedAt;
+    }) : undefined;
     if (!remote) return;
     const generation = this.durablePollGeneration;
     const valid = () => generation === this.durablePollGeneration && !this.shuttingDown && this.resolveExecution?.()?.id === remote.id && this.resolveExecution?.()?.cwd === remote.cwd;
@@ -932,6 +998,12 @@ export class BackgroundTaskRegistry {
     for (const record of records) {
       if (record.ownerSession !== this.ownerSession) continue;
       if (!/^[\w-]{1,100}$/.test(record.id) || record.cwd !== remote.cwd) throw new Error('Invalid remote discovery record');
+      const exclusion = monitorExclusion(remote.root, ctx.cwd, owner, remote.id, remote.cwd, record.id, record.startedAt);
+      const excluded = await exclusion.has();
+      // No await between this process-local recheck and insertion: a negative
+      // disk read may have completed just before a concurrent forget committed.
+      if (excluded || exclusion.isRemembered()) continue;
+      if (!valid()) return;
       const existing = this.tasks.get(record.id);
       if (existing) {
         if (existing.execution?.kind !== 'external' || existing.execution.id !== remote.id || existing.execution.cwd !== remote.cwd)
@@ -943,6 +1015,8 @@ export class BackgroundTaskRegistry {
         startTime: record.startedAt, bytesWritten: 0, isAgent: false, notified: false,
         notifyOnCompletion: record.notifyOnCompletion === true, triggerOnCompletion: record.triggerOnCompletion === true, waiters: [], lifetime: 'persistent',
         execution: { kind: 'external', id: remote.id, cwd: remote.cwd } };
+      monitorState.confirmed.add(task);
+      capturedTasks.set(task.id, task);
       this.taskClients.set(task, remote);
       this.restoredDurable.add(task);
       this.durableTasks.add(task);
@@ -952,7 +1026,7 @@ export class BackgroundTaskRegistry {
         if (!valid()) return;
         this.applyDurableRecord(task, fresh);
       }
-      catch (error) { if (!valid()) return; task.error = `Remote task unavailable: ${String(error)}`; }
+      catch (error) { if (!valid() || this.tasks.get(task.id) !== task) return; task.error = `Remote task unavailable: ${String(error)}`; }
     }
     this.scheduleDurablePoll();
     this.onChange();
@@ -996,6 +1070,7 @@ export class BackgroundTaskRegistry {
   }
 
   private applyDurableRecord(task: BgTask, record: durable.TaskRecord): void {
+    if (this.tasks.get(task.id) !== task) return;
     if (record.ownerSession !== this.ownerSession || task.ownerSession !== this.ownerSession) throw new Error('Persistent task owner mismatch');
     this.durableRefreshFailures.delete(task);
     if (task.status !== 'running') return;
@@ -1007,6 +1082,8 @@ export class BackgroundTaskRegistry {
     task.outputPath = record.outputFile;
     task.outputAbsPath = record.outputFile;
     task.startTime = record.startedAt;
+    pendingRemoteAdmissions.delete(task);
+    monitorState.confirmed.add(task);
     task.status = record.status;
     task.endTime = record.finishedAt;
     task.exitCode = record.exitCode;
@@ -1026,6 +1103,7 @@ export class BackgroundTaskRegistry {
         const deliver = async () => {
           await metadataReady;
           await task.terminalPublicationGate;
+          if (this.tasks.get(task.id) !== task) return;
           this.deliveryReady.add(task);
           if (this.shuttingDown) return;
           this.publishTerminal(task);
@@ -1057,7 +1135,7 @@ export class BackgroundTaskRegistry {
         void (this.taskClients.get(task) ?? this.durableClient).get(task.id, task.ownerSession).then(record => {
           if (generation === this.durablePollGeneration) this.applyDurableRecord(task, record);
         }).catch(error => {
-          if (generation !== this.durablePollGeneration) return;
+          if (generation !== this.durablePollGeneration || this.tasks.get(task.id) !== task) return;
           const previous = this.durableRefreshFailures.get(task);
           const attempts = Math.min((previous?.attempts ?? 0) + 1, 5);
           const diagnostic = BackgroundTaskRegistry.errorMessage(error).slice(0, 12288) || 'Unknown error';
@@ -1148,7 +1226,7 @@ export class BackgroundTaskRegistry {
       : { kind: 'local' as const, id: 'local', cwd: admittedCwd };
     const isAgent = options.isAgent ?? false;
     if (execution && isAgent) throw new Error('External bg_run requires isAgent:false');
-    const remote = execution ? captureRemote(execution, admittedCwd, this.maxOutputBytes, ownerSession) : undefined;
+    const remote = execution ? captureRemote(execution, admittedCwd, this.maxOutputBytes, ownerSession, record => this.tasks.get(record.id) !== task || task.ownerSession !== record.ownerSession || task.execution?.id !== descriptor.id || task.execution.cwd !== record.cwd || (!pendingRemoteAdmissions.has(task) && task.startTime !== record.startedAt)) : undefined;
     const externalSpawn = execution?.spawn.bind(execution);
     const baseInvocation = execution
       ? { shell: '', args: [], dialect: 'posix' as const, windowsVerbatimArguments: false }
@@ -1211,6 +1289,7 @@ export class BackgroundTaskRegistry {
       task.outputPath = task.outputAbsPath;
       task.metadataAbsPath = `${task.outputAbsPath}.json`;
       task.lifetime = 'persistent';
+      pendingRemoteAdmissions.add(task);
       this.taskClients.set(task, remote);
       this.durableTasks.add(task);
       this.tasks.set(id, task);
@@ -1223,8 +1302,10 @@ export class BackgroundTaskRegistry {
         if (record.id !== id) throw new Error('Remote task ID mismatch');
         this.applyDurableRecord(task, await remote.adapt(record));
       } catch (error) {
+        if (this.tasks.get(id) !== task) return task;
         try { this.applyDurableRecord(task, await remote.get(id)); }
         catch {
+          if (this.tasks.get(id) !== task) return task;
           task.error = `Admission uncertain for task ${id}: ${String(error)}. Inspect this ID; do not retry the command.`;
           this.onChange();
           throw new Error(task.error);
@@ -2568,6 +2649,7 @@ export class BackgroundTaskRegistry {
   }
 
   private publishTerminal(task: BgTask): void {
+    if (this.tasks.get(task.id) !== task) return;
     if (this.restoredDurable.has(task) || !this.deliveryReady.has(task) || !this.hostBound || task.terminalPublished || task.terminalPublishInFlight) return;
     task.terminalPublishInFlight = true;
     if (task.terminalPublicationGate === undefined) {
@@ -2588,6 +2670,7 @@ export class BackgroundTaskRegistry {
   }
 
   private tryPublishTerminalNow(task: BgTask): void {
+    if (this.tasks.get(task.id) !== task) return;
     try {
       if (this.restoredDurable.has(task) || !this.hostBound || task.terminalPublished) return;
       this.publishTerminalSnapshot(snapshot(task));
@@ -2605,6 +2688,7 @@ export class BackgroundTaskRegistry {
   }
 
   private handleTerminalPublishFailure(task: BgTask, error: unknown): void {
+    if (this.tasks.get(task.id) !== task) return;
     this.logger.error(`[background-tasks] terminal publication failed for ${task.id}:`, error);
     task.terminalPublishInFlight = false;
     if (!task.terminalPublished && task.terminalPublishRetryHandle === undefined) {
@@ -2617,6 +2701,7 @@ export class BackgroundTaskRegistry {
   }
 
   private notifyCompletion(task: BgTask): void {
+    if (this.tasks.get(task.id) !== task) return;
     if (!this.deliveryReady.has(task) || !this.hostBound || !task.notifyOnCompletion || task.notified || this.shuttingDown || this.notificationReserved) return;
     this.scheduleDurablePoll();
     const acknowledge = () => {

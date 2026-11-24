@@ -13,11 +13,11 @@ This authored section defines the boundary: documentation facts are extracted fr
 
 <!-- pi-docs:begin name="docs-freshness-gate" generator="scripts/docs/generate.mjs" -->
 - Canonical package version: `2.8.0`
-- Governed markdown docs: 40
-- Public surfaces extracted: 18
-- Governed production sources: 27
+- Governed markdown docs: 41
+- Public surfaces extracted: 19
+- Governed production sources: 28
 - Tool contracts extracted: 5
-- Schema IDs extracted: 5
+- Schema IDs extracted: 7
 - Environment variable references extracted: 25
 - Behavioral attestation receipts not passing: 8
 - Receipt store: `docs/attestations.json`

@@ -38,7 +38,8 @@ const docsModel = loadDocsModel();
 const docsRoot = new URL('../../docs/', import.meta.url);
 const markdownFiles = readdirSync(docsRoot, { recursive: true }).filter((file) => file.endsWith('.md'));
 assert.equal(docsModel.docs.length, markdownFiles.length, 'every docs Markdown file is governed');
-assert.equal(codeFacts.public_surface_ids.length, 18, 'retained public surfaces are extracted');
+assert.equal(codeFacts.public_surface_ids.length, 19, 'retained public surfaces are extracted');
+assert.ok(codeFacts.public_surface_ids.includes('command:bg_forget'));
 
 assert.ok(codeFacts.public_surface_ids.includes('eventbus:background-task-v1'));
 assert.ok(codeFacts.public_surface_ids.includes('tool:bg_run_pi_attested'));

@@ -1,3 +1,5 @@
+import type { TaskRecord, TaskList } from '../../src/persistent/client.js';
+import type { PersistentRemoteStart } from '../../src/core/execution-backend.js';
 import { EventEmitter } from 'node:events';
 import { BG_EXECUTION_CHANNEL, BG_EXECUTION_HOOK_CHANNEL } from '../../src/core/execution-backend.js';
 import { describe, it, after, afterEach, type TestContext } from 'node:test';
@@ -547,6 +549,97 @@ async function settledFooter(
 }
 
 void describe('sdk', () => {
+  void it('bg_forget requires an exact ID, retains logs and unrelated tasks, and persists across reload', async () => {
+    const eventBus = createEventBus();
+    const records = new Map<string, TaskRecord>();
+    let cancelCalls = 0;
+    let listCalls = 0;
+    const output = 'retained fake remote output\n';
+    const get = async (id: string) => {
+      const record = records.get(id);
+      assert.ok(record, `Unknown fake task ${id}`);
+      return record;
+    };
+    const unsubscribe = eventBus.on(BG_EXECUTION_CHANNEL, (request: unknown) => {
+      assert.ok(isJsonObject(request));
+      request['provider'] = {
+        id: 'ssh:sdk-forget-fake', cwd: '/fake/remote',
+        spawn: () => { throw new Error('Fake persistent provider must never spawn'); },
+        persistent: {
+          start: async (request: PersistentRemoteStart) => {
+            const record: TaskRecord = {
+              id: request.id, cwd: request.cwd,
+              ...(request.ownerSession === undefined ? {} : { ownerSession: request.ownerSession }),
+              name: request.name, command: request.command,
+              status: 'running', startedAt: Date.now(),
+              ...(request.description === undefined ? {} : { description: request.description }),
+              ...(request.notifyOnCompletion === undefined ? {} : { notifyOnCompletion: request.notifyOnCompletion }),
+              ...(request.triggerOnCompletion === undefined ? {} : { triggerOnCompletion: request.triggerOnCompletion }),
+              outputFile: `/fake/remote/${request.id}.log`, outputBytes: Buffer.byteLength(output),
+            };
+            records.set(record.id, record);
+            return record;
+          },
+          get,
+          list: async () => {
+            listCalls++;
+            return Object.assign([...records.values()], { diagnostics: [] }) as TaskList;
+          },
+          cancel: async (id: string) => { cancelCalls++; return get(id); },
+          logs: async (_id: string, offset: number, maxBytes: number) => {
+            const bytes = Buffer.from(output).subarray(offset, offset + maxBytes);
+            return { data: bytes.toString('base64'), nextOffset: offset + bytes.length, eof: true, size: Buffer.byteLength(output) };
+          },
+        },
+      };
+    });
+    const { session } = await harness({ eventBus });
+    const notifications: UiNotification[] = [];
+    await session.bindExtensions({
+      uiContext: makeStatusUi(session.extensionRunner.getUIContext(), [], notifications),
+    });
+    try {
+      const command = session.extensionRunner.getRegisteredCommands().find(cmd => cmd.invocationName === 'bg_forget');
+      assert.ok(command, '/bg_forget is registered as a command');
+      assert.equal(session.getToolDefinition('bg_forget'), undefined);
+      const launch = async (name: string) => taskFromResult(await exec(session, 'bg_run', {
+        name, command: 'fake-only-command', isAgent: false,
+        notifyOnCompletion: false, triggerOnCompletion: false,
+      }));
+      const forgotten = await launch('Forget this monitor');
+      const retained = await launch('Keep this monitor');
+      const ids = async () => tasksFromResult(await exec(session, 'bg_status', {})).map(task => task.id).sort();
+      const before = await ids();
+      for (const invalid of ['', forgotten.id.slice(0, -1), `${forgotten.id} ${retained.id}`, 'nonexistent-exact-id']) {
+        notifications.length = 0;
+        await command.handler(invalid, session.extensionRunner.createCommandContext());
+        assert.deepEqual(await ids(), before, `Invalid argument must not forget: ${invalid}`);
+        assert.ok(notifications.some(item => item.type === 'error' || item.type === 'warning'), 'Invalid arguments produce a diagnostic');
+      }
+      const savedOutput = await readFile(forgotten.outputPath, 'utf8');
+      notifications.length = 0;
+      await command.handler(forgotten.id, session.extensionRunner.createCommandContext());
+      assert.deepEqual(await ids(), [retained.id]);
+      const message = notifications.map(item => item.message).join('\n');
+      assert.match(message, /remote/i);
+      assert.match(message, /does not stop|not (?:been )?(?:stopped|cancelled|canceled)|continues|still running/i);
+      assert.match(message, /logs?.*(?:retain|kept|preserv)|(?:retain|kept|preserv).*logs?/i);
+      assert.equal(await readFile(forgotten.outputPath, 'utf8'), savedOutput);
+      assert.equal(records.get(forgotten.id)?.status, 'running');
+      const listsBefore = listCalls;
+      await session.reload();
+      assert.ok(listCalls > listsBefore, 'Reload rediscovers the fake provider records');
+      assert.deepEqual(await ids(), [retained.id]);
+      assert.equal(await readFile(forgotten.outputPath, 'utf8'), savedOutput);
+      assert.equal(cancelCalls, 0);
+    } finally {
+      await session.extensionRunner.emit({ type: 'session_shutdown', reason: 'quit' });
+      session.dispose();
+      unsubscribe();
+      assert.equal(cancelCalls, 0, 'Forgetting, reload, and shutdown never cancel remote work');
+    }
+  });
+
   void it('deduplicates remote restore diagnostics without printing Error stacks', async () => {
     const eventBus = createEventBus();
     const { session } = await harness({ eventBus });
@@ -647,7 +740,7 @@ void describe('sdk', () => {
       assert.match(JSON.stringify(isAgentSchema), /LLM\/agent/);
       const cmds = session.extensionRunner.getRegisteredCommands().map((c) => c.invocationName);
       assert.deepEqual([...cmds].sort(), [
-        'bg', 'jobs', 'logs', 'kill', 'tasks', 'bg-tasks', 'bg-clear', 'bg-update',
+        'bg', 'jobs', 'logs', 'kill', 'tasks', 'bg-tasks', 'bg-clear', 'bg-update', 'bg_forget',
       ].sort());
       assert.equal(cmds.includes('fusion'), false);
       assert.equal(cmds.includes('fusion-models'), false);

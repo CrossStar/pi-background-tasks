@@ -23,7 +23,7 @@ The table below remains the exhaustive acceptance source. Do not replace it with
 |---|---|
 | Package | `pi-background-tasks` |
 | Extension entrypoints | `extensions/anthropic-attribution.ts`, `extensions/background-tasks.ts` |
-| Public commands | `/bg`, `/jobs`, `/logs`, `/kill`, `/tasks`, `/bg-tasks`, `/bg-clear`, `/bg-update`, `/claude-cache` |
+| Public commands | `/bg`, `/jobs`, `/logs`, `/kill`, `/tasks`, `/bg-tasks`, `/bg-clear`, `/bg_forget`, `/bg-update`, `/claude-cache` |
 | Public tools | `bg_run`, `bg_run_pi_attested`, `bg_status`, `bg_logs`, `bg_kill` |
 | Extension EventBus API | `pi-background-tasks:request:v1`, `pi-background-tasks:response:v1`, `pi-background-tasks:terminal:v1`; schemas exported from `src/core/extension-api.ts` |
 | Shortcuts | `Shift+Down`; optional fallback `Ctrl+Alt+C` |
@@ -41,6 +41,10 @@ Persistent local commands must survive the admitting Pi process, preserve their 
 Required failure scenarios include daemon SIGKILL with a live supervisor, duplicate admission with a launch side-effect counter, offline timeout/output cap, cancellation before launch readiness, and unavailable supervisor control. Recovery must never execute a stored command again. Supervisor records own execution truth; Pi must not rewrite them with notification state. Offline completions and recovered running tasks must deliver opted-in notifications to the same owner session after it becomes idle, with full-session-history deduplication. Foreign and unowned tasks must never notify a replacement conversation; recovered tasks must not emit unsolicited terminal EventBus events. Cover failed/unconfirmed sends, busy-host deferral, pending-task retention, and detach/rebind retry.
 
 Packaged standalone entrypoints must run with Node without development-only TypeScript loaders. Linux validation does not establish Windows process-tree cancellation or macOS pathname-socket recovery; report untested platform behavior explicitly.
+
+## Local-only remote monitor forgetting
+
+Fake-backend tests must cover exact-ID rejection, durable identity exclusions, preserved cached logs, zero remote calls during forget, other tasks continuing to poll, and no automatic removal after transient query errors. Deferred `get` success/failure, discovery and publication gates must not revive or notify forgotten tasks. Exclusions must survive fresh-registry restoration and SDK reload without filtering another owner/endpoint/cwd/incarnation with the same ID. Exercise old process-registry method replacement while discovery is unavailable, and fail persistence without dropping monitoring. Use fake providers only for these checks; missing remote records are not process termination evidence.
 
 ## Required gates
 

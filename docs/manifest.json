@@ -23,7 +23,7 @@
       "state": "missing"
     },
     {
-      "authored_body_sha256": "sha256:a193998414925119988c8db58acf3200832fb20f9029422d93164605811a0c29",
+      "authored_body_sha256": "sha256:6a624c6cd11c3227e69b3a5c5c0586ac18b629cd09d251a0621e1ad3104984d7",
       "covers_sources": [
         "src/core/persistent-runtime.ts",
         "src/core/remote-persistent.ts"
@@ -57,9 +57,10 @@
       "state": "stale-authored-prose"
     },
     {
-      "authored_body_sha256": "sha256:737604e39dfd57446bc354f8bf51c103127b4c146761a2eadf0446b972bc34a8",
+      "authored_body_sha256": "sha256:37b8b1815b2d6369396e2727ad4c99d38adda023699d4a49bce98edd151b9893",
       "covers_sources": [
         "src/core/common.ts",
+        "src/core/monitor-exclusion.ts",
         "src/core/registry.ts",
         "src/core/windows-taskkill.ts"
       ],
@@ -82,7 +83,7 @@
       "state": "stale-authored-prose"
     },
     {
-      "authored_body_sha256": "sha256:7996ae9b6ed3e4c73abd49b0a6ad13ea69a4d2861c034572cb155a67a4a2cb80",
+      "authored_body_sha256": "sha256:4b892967b8c71fe4d9b333827640a96e76340aeef00c925ce36bce7adad17647",
       "covers_sources": [
         "extensions/background-tasks.ts",
         "src/core/completion-receipt.ts",
@@ -236,6 +237,17 @@
       "rel": "docs/commands/bg-clear.md",
       "review_policy": "contract",
       "stability": "stable"
+    },
+    "commands/bg-forget": {
+      "audience": "user",
+      "covers_sources": [],
+      "covers_surfaces": [
+        "command:bg_forget"
+      ],
+      "mode": "authored",
+      "rel": "docs/commands/bg-forget.md",
+      "review_policy": "contract",
+      "stability": "evolving"
     },
     "commands/bg-update": {
       "audience": "user",
@@ -427,6 +439,7 @@
       "audience": "maintainer",
       "covers_sources": [
         "src/core/common.ts",
+        "src/core/monitor-exclusion.ts",
         "src/core/registry.ts",
         "src/core/windows-taskkill.ts"
       ],
@@ -697,6 +710,7 @@
     "command:bg-clear",
     "command:bg-tasks",
     "command:bg-update",
+    "command:bg_forget",
     "command:claude-cache",
     "command:jobs",
     "command:kill",
@@ -722,11 +736,18 @@
         "source": "src/extension.ts:617"
       },
       {
+        "description": "Forget one persistent remote task monitor by exact ID without stopping the task",
+        "id": "command:bg_forget",
+        "kind": "command",
+        "name": "bg_forget",
+        "source": "src/extension.ts:659"
+      },
+      {
         "description": "Clear finished background task footer notices",
         "id": "command:bg-clear",
         "kind": "command",
         "name": "bg-clear",
-        "source": "src/extension.ts:659"
+        "source": "src/extension.ts:677"
       },
       {
         "description": "Open the background task manager UI",
@@ -740,7 +761,7 @@
         "id": "command:bg-update",
         "kind": "command",
         "name": "bg-update",
-        "source": "src/extension.ts:667"
+        "source": "src/extension.ts:685"
       },
       {
         "description": "Show or set Claude cache retention for this session (short, long, default)",
@@ -754,21 +775,21 @@
         "id": "command:jobs",
         "kind": "command",
         "name": "jobs",
-        "source": "src/extension.ts:705"
+        "source": "src/extension.ts:723"
       },
       {
         "description": "Stop a running background task: /kill <id>",
         "id": "command:kill",
         "kind": "command",
         "name": "kill",
-        "source": "src/extension.ts:749"
+        "source": "src/extension.ts:767"
       },
       {
         "description": "Show bounded output from a background task: /logs <id> [maxBytes]",
         "id": "command:logs",
         "kind": "command",
         "name": "logs",
-        "source": "src/extension.ts:718"
+        "source": "src/extension.ts:736"
       },
       {
         "description": "Open the Claude-like background task manager UI",
@@ -812,14 +833,14 @@
         "id": "shortcut:ctrl+alt+c",
         "kind": "shortcut",
         "name": "ctrl+alt+c",
-        "source": "src/extension.ts:697"
+        "source": "src/extension.ts:715"
       },
       {
         "description": "Open focused background task footer dock",
         "id": "shortcut:shift+down",
         "kind": "shortcut",
         "name": "shift+down",
-        "source": "src/extension.ts:690"
+        "source": "src/extension.ts:708"
       }
     ],
     "tool": [
@@ -845,7 +866,7 @@
           ],
           "type": "object"
         },
-        "source": "src/extension.ts:1008"
+        "source": "src/extension.ts:1026"
       },
       {
         "description": "Read bounded output from a background task for deliberate inspection; this is not a waiting primitive. Output is capped at 50.0KB for model safety and points to the full output file when truncated.",
@@ -879,7 +900,7 @@
           ],
           "type": "object"
         },
-        "source": "src/extension.ts:963"
+        "source": "src/extension.ts:981"
       },
       {
         "description": "Start a named long-running shell command in the background and return immediately with a task ID and output path. By default, completed, failed, or killed terminal state is delivered automatically as <background-task-notification> and starts a follow-up agent turn; do not sleep or poll merely to wait. Output is written to .pi/tasks and model-visible logs are bounded to 50.0KB.",
@@ -936,7 +957,7 @@
           ],
           "type": "object"
         },
-        "source": "src/extension.ts:782"
+        "source": "src/extension.ts:800"
       },
       {
         "description": "Opt-in evidence-oriented direct Pi spawn. Launches exactly one `pi --mode json` child, records raw Pi events/stderr, hashes prompt/report/output, observes OAuth through ModelRegistry, and emits a strict attestation sidecar only after successful completion.",
@@ -997,7 +1018,7 @@
           ],
           "type": "object"
         },
-        "source": "src/extension.ts:867"
+        "source": "src/extension.ts:885"
       },
       {
         "description": "Inspect one background task or list all running/recent background tasks. This is a point-in-time inspection tool, not a waiting primitive.",
@@ -1021,7 +1042,7 @@
           "required": [],
           "type": "object"
         },
-        "source": "src/extension.ts:932"
+        "source": "src/extension.ts:950"
       }
     ],
     "workflow": []
@@ -1057,6 +1078,9 @@
     ],
     "src/core/extension-api.ts": [
       "api/eventbus-v1"
+    ],
+    "src/core/monitor-exclusion.ts": [
+      "subsystems/background-task-runtime"
     ],
     "src/core/persistent-runtime.ts": [
       "PERSISTENT-REMOTE"
@@ -1122,6 +1146,9 @@
     ],
     "command:bg-update": [
       "commands/bg-update"
+    ],
+    "command:bg_forget": [
+      "commands/bg-forget"
     ],
     "command:claude-cache": [
       "commands/claude-cache"

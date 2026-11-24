@@ -199,14 +199,14 @@ PTY 测试是否实际执行取决于宿主的交互输入能力；跳过不能�
 <!-- pi-docs:begin name="readme-public-surfaces" generator="scripts/docs/generate.mjs" -->
 | 接口类型 | 数量 |
 | --- | --- |
-| 命令 | 9 |
+| 命令 | 10 |
 | 工具 | 5 |
 | 快捷键 | 2 |
 | 消息渲染器 | 1 |
 | 事件接口 | 1 |
 | 工作流 | 0 |
 
-公开命令：`/bg`, `/bg-clear`, `/bg-tasks`, `/bg-update`, `/claude-cache`, `/jobs`, `/kill`, `/logs`, `/tasks`。
+公开命令：`/bg`, `/bg_forget`, `/bg-clear`, `/bg-tasks`, `/bg-update`, `/claude-cache`, `/jobs`, `/kill`, `/logs`, `/tasks`。
 
 公开工具：`bg_kill`, `bg_logs`, `bg_run`, `bg_run_pi_attested`, `bg_status`。
 

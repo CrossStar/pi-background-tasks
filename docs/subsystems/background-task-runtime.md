@@ -5,7 +5,7 @@ mode: authored
 review_policy: behavioral
 stability: stable
 covers_surfaces: []
-covers_sources: [src/core/common.ts, src/core/registry.ts, src/core/windows-taskkill.ts]
+covers_sources: [src/core/common.ts, src/core/monitor-exclusion.ts, src/core/registry.ts, src/core/windows-taskkill.ts]
 ---
 # Background task runtime
 
@@ -24,6 +24,12 @@ The runtime owns task identity, shell invocation, process lifecycle, bounded log
 ## Execution backends
 
 [Execution backends v1](../api/execution-backends-v1.md) defines synchronous provider discovery and child ownership. The default remains the local shell. External providers are captured at admission, never fall back locally, and support only non-agent commands. Logs remain local. Cancellation and transport errors retain explicit unknown-outcome diagnostics instead of claiming a successful stop.
+
+## Forgetting persistent remote monitoring
+
+`forgetTask` is an explicit local-only operation for an exact full task ID in the bound owning session. It requires a persistent external task and uses the execution client captured at admission, not current SSH discovery. Exclusion identity includes the resolved local project directory, owner session, captured endpoint and remote cwd, task ID, and start timestamp. A versioned identity-hashed file is stored durably in the local remote-cache directory and its contents must match before discovery suppresses a record. A matching ID with another identity remains eligible for restoration.
+
+Only after successful exclusion persistence is the monitored task removed. Per-task membership checks prevent stale polling, log adaptation and pending completion delivery from reviving or notifying a removed task; other tasks continue normally. Cached logs and metadata remain intact. Already-submitted notifications cannot be recalled. This operation never invokes backend cancellation or other remote APIs, creates a remote record, or changes the remote status. Query failures—including ENOENT—remain diagnostics until the user explicitly chooses to forget monitoring.
 
 ## Starting managed tasks
 

@@ -1,12 +1,13 @@
+import { ensureSafeCacheDir } from './monitor-exclusion.ts';
 import { createHash } from 'node:crypto';
-import { mkdir, stat, open, lstat } from 'node:fs/promises';
+import { stat, open } from 'node:fs/promises';
 import { constants } from 'node:fs';
 import { join, isAbsolute } from 'node:path';
 import type { BackgroundExecutionProvider, PersistentRemoteExecution } from './execution-backend.ts';
 import type { TaskRecord } from '../persistent/client.ts';
 
 /** Capture every method before the first asynchronous admission operation. */
-export function captureRemote(provider: BackgroundExecutionProvider, localCwd: string, cap: number, ownerSession: string) {
+export function captureRemote(provider: BackgroundExecutionProvider, localCwd: string, cap: number, ownerSession: string, detached: (record: TaskRecord) => boolean = () => false) {
   if (!provider.persistent) return undefined;
   const id = provider.id;
   const cwd = provider.cwd;
@@ -22,6 +23,7 @@ export function captureRemote(provider: BackgroundExecutionProvider, localCwd: s
   const root = join(localCwd, '.pi', 'tasks', 'remote', createHash('sha256').update(JSON.stringify([id, cwd, ownerSession])).digest('hex'));
   const pending = new Map<string, Promise<TaskRecord>>();
   async function sync(record: TaskRecord): Promise<TaskRecord> {
+    if (detached(record)) throw new Error('Remote monitor detached');
     if (record.ownerSession !== ownerSession) throw new Error('Remote task owner mismatch');
     const outputBytes = record.outputBytes;
     if (!/^[\w-]{1,100}$/.test(record.id) || record.cwd !== cwd ||
@@ -38,10 +40,7 @@ export function captureRemote(provider: BackgroundExecutionProvider, localCwd: s
     }
     if ((record.finishedAt !== undefined && !Number.isFinite(record.finishedAt)) ||
         (record.exitCode != null && !Number.isInteger(record.exitCode))) throw new Error('Invalid remote numeric field');
-    for (const directory of [join(localCwd, '.pi'), join(localCwd, '.pi', 'tasks'), join(localCwd, '.pi', 'tasks', 'remote'), root]) {
-      await mkdir(directory, { mode: 0o700 }).catch((error: NodeJS.ErrnoException) => { if (error.code !== 'EEXIST') throw error; });
-      if (!(await lstat(directory)).isDirectory()) throw new Error('Unsafe remote cache directory');
-    }
+    await ensureSafeCacheDir(localCwd, root);
     const outputFile = join(root, `${record.id}.output`);
     let offset = await stat(outputFile).then(s => s.size, (e: NodeJS.ErrnoException) => { if (e.code === 'ENOENT') return 0; throw e; });
     const target = Math.min(cap, outputBytes);
@@ -50,8 +49,10 @@ export function captureRemote(provider: BackgroundExecutionProvider, localCwd: s
     try {
     await file.chmod(0o600);
     while (offset < target) {
+      if (detached(record)) throw new Error('Remote monitor detached');
       const count = Math.min(49152, target - offset);
       const chunk = await api.logs(record.id, offset, count, ownerSession);
+      if (detached(record)) throw new Error('Remote monitor detached');
       const bytes = Buffer.from(chunk.data, 'base64');
       if (bytes.toString('base64') !== chunk.data || !bytes.length || bytes.length > count ||
           chunk.nextOffset !== offset + bytes.length || !Number.isSafeInteger(chunk.size) ||

@@ -656,6 +656,24 @@ export default function backgroundTasksExtension(pi: ExtensionAPI): void {
     },
   });
 
+  pi.registerCommand('bg_forget', {
+    description: 'Forget one persistent remote task monitor by exact ID without stopping the task',
+    handler: async (args, ctx) => {
+      const id = args.trim();
+      if (!id || /\s/.test(id)) {
+        ctx.ui.notify('Usage: /bg_forget <exact-task-id>. Forgetting monitoring does not stop the remote task.', 'error');
+        return;
+      }
+      try {
+        await registry.forgetTask(backgroundTaskContext(ctx), id);
+        updateUi(ctx);
+        ctx.ui.notify(`Forgot local monitoring for ${id}. This does not stop the remote task. Historical logs are retained.`, 'info');
+      } catch (error) {
+        ctx.ui.notify(`Could not forget local monitoring: ${error instanceof Error ? error.message : String(error)}`, 'error');
+      }
+    },
+  });
+
   pi.registerCommand('bg-clear', {
     description: 'Clear finished background task footer notices',
     handler: (_args, ctx) => {

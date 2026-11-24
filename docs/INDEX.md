@@ -65,6 +65,7 @@ Generated navigation for every package-local documentation page. This index inte
 | [choose-a-workflow](./choose-a-workflow.md) | authored | contract | stable |
 | [commands/bg](./commands/bg.md) | mixed | contract | stable |
 | [commands/bg-clear](./commands/bg-clear.md) | mixed | contract | stable |
+| [commands/bg-forget](./commands/bg-forget.md) | authored | contract | evolving |
 | [commands/bg-update](./commands/bg-update.md) | mixed | contract | stable |
 | [commands/claude-cache](./commands/claude-cache.md) | mixed | contract | evolving |
 | [commands/jobs](./commands/jobs.md) | mixed | contract | stable |
@@ -78,7 +79,7 @@ Generated navigation for every package-local documentation page. This index inte
 ## Docs by category
 
 - **api**: [api/eventbus-v1](./api/eventbus-v1.md), [api/execution-backends-v1](./api/execution-backends-v1.md)
-- **commands**: [commands/bg](./commands/bg.md), [commands/bg-clear](./commands/bg-clear.md), [commands/bg-update](./commands/bg-update.md), [commands/claude-cache](./commands/claude-cache.md), [commands/jobs](./commands/jobs.md), [commands/kill](./commands/kill.md), [commands/logs](./commands/logs.md), [commands/task-manager](./commands/task-manager.md)
+- **commands**: [commands/bg](./commands/bg.md), [commands/bg-clear](./commands/bg-clear.md), [commands/bg-forget](./commands/bg-forget.md), [commands/bg-update](./commands/bg-update.md), [commands/claude-cache](./commands/claude-cache.md), [commands/jobs](./commands/jobs.md), [commands/kill](./commands/kill.md), [commands/logs](./commands/logs.md), [commands/task-manager](./commands/task-manager.md)
 - **concepts**: [concepts/completion-delivery](./concepts/completion-delivery.md)
 - **operations**: [operations/configuration](./operations/configuration.md), [operations/releasing](./operations/releasing.md), [operations/testing](./operations/testing.md), [operations/troubleshooting](./operations/troubleshooting.md)
 - **reference**: [reference/runtime-contracts](./reference/runtime-contracts.md), [reference/shortcuts-and-dock](./reference/shortcuts-and-dock.md)
@@ -94,6 +95,7 @@ Generated navigation for every package-local documentation page. This index inte
 | `command:bg-clear` | [commands/bg-clear](./commands/bg-clear.md) |
 | `command:bg-tasks` | [commands/task-manager](./commands/task-manager.md) |
 | `command:bg-update` | [commands/bg-update](./commands/bg-update.md) |
+| `command:bg_forget` | [commands/bg-forget](./commands/bg-forget.md) |
 | `command:claude-cache` | [commands/claude-cache](./commands/claude-cache.md) |
 | `command:jobs` | [commands/jobs](./commands/jobs.md) |
 | `command:kill` | [commands/kill](./commands/kill.md) |
@@ -114,20 +116,21 @@ Generated navigation for every package-local documentation page. This index inte
 | Kind | Name | ID | Provenance |
 | --- | --- | --- | --- |
 | command | `bg` | `command:bg` | `src/extension.ts:617` |
-| command | `bg-clear` | `command:bg-clear` | `src/extension.ts:659` |
+| command | `bg_forget` | `command:bg_forget` | `src/extension.ts:659` |
+| command | `bg-clear` | `command:bg-clear` | `src/extension.ts:677` |
 | command | `bg-tasks` | `command:bg-tasks` | `src/extension.ts:651` |
-| command | `bg-update` | `command:bg-update` | `src/extension.ts:667` |
+| command | `bg-update` | `command:bg-update` | `src/extension.ts:685` |
 | command | `claude-cache` | `command:claude-cache` | `src/core/anthropic-attribution.ts:1928` |
-| command | `jobs` | `command:jobs` | `src/extension.ts:705` |
-| command | `kill` | `command:kill` | `src/extension.ts:749` |
-| command | `logs` | `command:logs` | `src/extension.ts:718` |
+| command | `jobs` | `command:jobs` | `src/extension.ts:723` |
+| command | `kill` | `command:kill` | `src/extension.ts:767` |
+| command | `logs` | `command:logs` | `src/extension.ts:736` |
 | command | `tasks` | `command:tasks` | `src/extension.ts:643` |
-| tool | `bg_kill` | `tool:bg_kill` | `src/extension.ts:1008` |
-| tool | `bg_logs` | `tool:bg_logs` | `src/extension.ts:963` |
-| tool | `bg_run` | `tool:bg_run` | `src/extension.ts:782` |
-| tool | `bg_run_pi_attested` | `tool:bg_run_pi_attested` | `src/extension.ts:867` |
-| tool | `bg_status` | `tool:bg_status` | `src/extension.ts:932` |
-| shortcut | `ctrl+alt+c` | `shortcut:ctrl+alt+c` | `src/extension.ts:697` |
-| shortcut | `shift+down` | `shortcut:shift+down` | `src/extension.ts:690` |
+| tool | `bg_kill` | `tool:bg_kill` | `src/extension.ts:1026` |
+| tool | `bg_logs` | `tool:bg_logs` | `src/extension.ts:981` |
+| tool | `bg_run` | `tool:bg_run` | `src/extension.ts:800` |
+| tool | `bg_run_pi_attested` | `tool:bg_run_pi_attested` | `src/extension.ts:885` |
+| tool | `bg_status` | `tool:bg_status` | `src/extension.ts:950` |
+| shortcut | `ctrl+alt+c` | `shortcut:ctrl+alt+c` | `src/extension.ts:715` |
+| shortcut | `shift+down` | `shortcut:shift+down` | `src/extension.ts:708` |
 | renderer | `background-task-notification` | `renderer:background-task-notification` | `src/extension.ts:477` |
 | eventbus | `background-task-v1` | `eventbus:background-task-v1` | `src/core/extension-api.ts` |

@@ -29,9 +29,9 @@ This generated registry lists production environment-variable references, runtim
 | `PI_API_BASE_URL` | remove | `src/core/attested-pi-run.ts:135` |
 | `PI_API_KEY` | remove | `src/core/attested-pi-run.ts:135` |
 | `PI_AUTH_FILE` | remove | `src/core/attested-pi-run.ts:135` |
-| `PI_BG_DISABLE_PI_TELEMETRY` | read | `src/core/registry.ts:210` |
+| `PI_BG_DISABLE_PI_TELEMETRY` | read | `src/core/registry.ts:212` |
 | `PI_BG_DISABLE_UPDATE_CHECK` | read | `src/extension.ts:506` |
-| `PI_BG_MAX_OUTPUT_BYTES` | read | `src/core/registry.ts:70` |
+| `PI_BG_MAX_OUTPUT_BYTES` | read | `src/core/registry.ts:72` |
 | `PI_BG_REGISTRY_URL` | read | `src/extension.ts:515` |
 | `PI_BG_SHELL` | read | `src/core/common.ts:662` |
 | `PI_BG_SHELL_PATH` | read | `src/core/common.ts:663` |
@@ -46,10 +46,10 @@ This generated registry lists production environment-variable references, runtim
 
 | Kind | Path/artifact | Provenance |
 | --- | --- | --- |
-| directory | `.pi/tasks/<session-id>-<pid>/` | `src/core/registry.ts:904` |
+| directory | `.pi/tasks/<session-id>-<pid>/` | `src/core/registry.ts:964` |
 | task-file | `.pi/tasks/<session-id>-<pid>/<task-id>.attestation.json` | `src/core/attested-pi-run.ts:592` |
-| task-file | `.pi/tasks/<session-id>-<pid>/<task-id>.json` | `src/core/registry.ts:1103` |
-| task-file | `.pi/tasks/<session-id>-<pid>/<task-id>.output` | `src/core/registry.ts:1164` |
+| task-file | `.pi/tasks/<session-id>-<pid>/<task-id>.json` | `src/core/registry.ts:1181` |
+| task-file | `.pi/tasks/<session-id>-<pid>/<task-id>.output` | `src/core/registry.ts:1242` |
 | task-file | `.pi/tasks/<session-id>-<pid>/<task-id>.pi-events.jsonl` | `src/core/attested-pi-run.ts:589` |
 | task-file | `.pi/tasks/<session-id>-<pid>/<task-id>.pi-telemetry-wrapper.cjs` | `src/core/attested-pi-run.ts:591` |
 | task-file | `.pi/tasks/<session-id>-<pid>/<task-id>.stderr` | `src/core/attested-pi-run.ts:590` |
@@ -62,7 +62,9 @@ This generated registry lists production environment-variable references, runtim
 | `pi-background-tasks.extension-request.v1` | `src/core/extension-api.ts:15` |
 | `pi-background-tasks.extension-response.v1` | `src/core/extension-api.ts:16` |
 | `pi-background-tasks.extension-terminal.v1` | `src/core/extension-api.ts:17` |
-| `pi-background-tasks.process-registry.v1` | `src/core/registry.ts:711` |
+| `pi-background-tasks.monitor-exclusions.v1` | `src/core/monitor-exclusion.ts:6` |
+| `pi-background-tasks.monitor-state.v1` | `src/core/registry.ts:763` |
+| `pi-background-tasks.process-registry.v1` | `src/core/registry.ts:713` |
 
 ### Status vocabularies
 

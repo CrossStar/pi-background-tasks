@@ -1149,7 +1149,6 @@ export class BackgroundTaskRegistry {
           const previous = this.durableRefreshFailures.get(task);
           const attempts = Math.min((previous?.attempts ?? 0) + 1, 5);
           const diagnostic = BackgroundTaskRegistry.errorMessage(error).slice(0, 12288) || 'Unknown error';
-          const message = diagnostic.split(/[\r\n]/u, 1)[0]?.slice(0, 300) || 'Unknown error';
           this.durableRefreshFailures.set(task, {
             attempts,
             nextRetry: this.now() + Math.min(2000 * 2 ** (attempts - 1), 30000),
@@ -1158,7 +1157,8 @@ export class BackgroundTaskRegistry {
           if (previous?.message !== diagnostic) {
             task.error = `Persistent task unavailable: ${diagnostic}`;
             this.onChange();
-            this.logger.error(`Durable task refresh failed: ${task.id.slice(0, 80)}: ${message}`);
+            // Poll availability belongs to task status/logs, not the host TUI logger.
+            // A failed read cannot establish terminal state or authorize mutation replay.
           }
         }).finally(() => {
           this.durableRefreshing.delete(task);

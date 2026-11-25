@@ -8,7 +8,8 @@ test('persistent polling backs off independently, deduplicates, recovers, and ig
   let now = 0;
   const logs: unknown[][] = [];
   let changes = 0;
-  const registry = new BackgroundTaskRegistry({ sendCompletionNotification: () => {}, now: () => now, logger: { error: (...args: unknown[]) => { logs.push(args); } }, onChange: () => { changes++; } });
+  let notifications = 0;
+  const registry = new BackgroundTaskRegistry({ sendCompletionNotification: () => { notifications++; }, now: () => now, logger: { error: (...args: unknown[]) => { logs.push(args); } }, onChange: () => { changes++; } });
   const client: ReturnType<typeof durable.createClient> = Reflect.get(registry, 'durableClient');
   const record = (id: string): durable.TaskRecord => ({ ownerSession: 'first', id, name: id, command: 'true', cwd: '/tmp', status: 'running', startedAt: 0, outputFile: '/tmp/output' });
   client.list = async () => Object.assign([record('bad'), record('healthy')], { diagnostics: [] });
@@ -32,17 +33,15 @@ test('persistent polling backs off independently, deduplicates, recovers, and ig
     const task = registry.resolveTask('bad');
     for (const time of [1000, 3000, 7000, 15000, 31000, 61000]) await tick(time);
     assert.equal(badCalls, 6);
-    assert.equal(logs.length, 1);
+    assert.equal(logs.length, 0);
     assert.equal(task.error, 'Persistent task unavailable: offline\n    at secret stack');
-    assert.equal(logs[0]?.length, 1);
-    assert.doesNotMatch(String(logs[0]?.[0]), /stack|\n/);
     await tick(62000);
     assert.equal(badCalls, 6);
     assert.equal(healthyCalls, 7);
-    error = new Error('changed ' + 'x'.repeat(1000));
+    error = new Error('Persistent SSH ensure: Request timed out; outcome unknown; reconnect required');
     await tick(91000);
-    assert.equal(logs.length, 2);
-    assert.ok(String(logs[1]?.[0]).length < 420);
+    assert.equal(logs.length, 0);
+    assert.equal(task.error, `Persistent task unavailable: ${error.message}`);
     await tick(93000);
     assert.equal(badCalls, 7);
     recover = true;
@@ -50,7 +49,7 @@ test('persistent polling backs off independently, deduplicates, recovers, and ig
     assert.equal(task.error, undefined);
     recover = false;
     await tick(122000);
-    assert.equal(logs.length, 3);
+    assert.equal(logs.length, 0);
     await tick(123000);
     assert.equal(badCalls, 9);
     await tick(124000);
@@ -66,6 +65,7 @@ test('persistent polling backs off independently, deduplicates, recovers, and ig
     await new Promise<void>(resolve => setImmediate(resolve));
     assert.equal(changes, before);
     assert.equal(task.error, previousError);
-    assert.equal(logs.length, 3);
+    assert.equal(notifications, 0);
+    assert.equal(logs.length, 0);
   } finally { registry.setShuttingDown(true); registry.detachHost(); }
 });

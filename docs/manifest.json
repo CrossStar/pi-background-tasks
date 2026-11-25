@@ -57,7 +57,7 @@
       "state": "stale-authored-prose"
     },
     {
-      "authored_body_sha256": "sha256:0fb498c9435dd64b9126c72feef71ddcca00c6c703888da37d1ad3a5edcdd9ad",
+      "authored_body_sha256": "sha256:d5c88105385be48fc084dcd7f39814fccc1847d00f8350dea41e0ffe7f5d3a4d",
       "covers_sources": [
         "src/core/common.ts",
         "src/core/monitor-exclusion.ts",

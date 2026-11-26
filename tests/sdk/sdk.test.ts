@@ -474,6 +474,50 @@ async function renderFooterViaJobs(session: AgentSession): Promise<void> {
   await jobs.handler('', session.extensionRunner.createCommandContext());
 }
 
+it('deduplicates footer ticks and refreshes dock and UI lifecycle changes', async () => {
+  const previous = process.env['PI_BG_DISABLE_UPDATE_CHECK'];
+  process.env['PI_BG_DISABLE_UPDATE_CHECK'] = '1';
+  const { session } = await harness();
+  const statuses: Array<string | undefined> = [];
+  let widgets = 0;
+  const ui = {
+    ...makeStatusUi(session.extensionRunner.getUIContext(), statuses, []),
+    setWidget: () => { widgets++; },
+  };
+  session.extensionRunner.setUIContext(ui);
+  try {
+    await session.extensionRunner.emit({ type: 'session_start', reason: 'startup' });
+    const initial = statuses.length;
+    const initialWidgets = widgets;
+    await renderFooterViaJobs(session);
+    await renderFooterViaJobs(session);
+    await new Promise((resolve) => setTimeout(resolve, 1100));
+    assert.equal(statuses.length, initial, 'unchanged commands and timer must not render');
+    assert.equal(widgets, initialWidgets, 'timer must not remove the absent widget');
+
+    const tasks = session.extensionRunner.getRegisteredCommands().find((cmd) => cmd.invocationName === 'tasks');
+    assert.ok(tasks);
+    await tasks.handler('', session.extensionRunner.createCommandContext());
+    assert.match(statuses.at(-2) ?? '', /focused/);
+    assert.match(statuses.at(-1) ?? '', /Shift↓/);
+    const afterDock = statuses.length;
+    await renderFooterViaJobs(session);
+    assert.equal(statuses.length, afterDock);
+
+    session.extensionRunner.setUIContext({ ...ui });
+    await renderFooterViaJobs(session);
+    assert.equal(statuses.length, afterDock + 1, 'replacement UI receives unchanged status');
+    assert.equal(widgets, initialWidgets + 1);
+    await session.extensionRunner.emit({ type: 'session_start', reason: 'reload' });
+    assert.equal(statuses.length, afterDock + 2, 'session start invalidates cached status');
+    assert.equal(widgets, initialWidgets + 2);
+  } finally {
+    await session.extensionRunner.emit({ type: 'session_shutdown', reason: 'quit' });
+    session.dispose();
+    restoreEnvValue('PI_BG_DISABLE_UPDATE_CHECK', previous);
+  }
+});
+
 const UPDATE_ENV_KEYS = ['PI_OFFLINE', 'PI_BG_DISABLE_UPDATE_CHECK', 'PI_BG_REGISTRY_URL'] as const;
 
 type EnvOverrides = Record<string, string>;

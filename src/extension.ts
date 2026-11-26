@@ -279,6 +279,9 @@ export default function backgroundTasksExtension(pi: ExtensionAPI): void {
   let statusInterval: NodeJS.Timeout | undefined;
   let latestKnownVersion: string | undefined;
   let updateCheckStarted = false;
+  let lastUi: ExtensionContext['ui'] | undefined;
+  let lastUiSessionId: string | undefined;
+  let lastStatus: string | undefined;
 
   let eventService: BackgroundTaskExtensionService | undefined;
   let registry = new BackgroundTaskRegistry({
@@ -329,7 +332,18 @@ export default function backgroundTasksExtension(pi: ExtensionAPI): void {
   function updateUi(ctx = currentCtx): void {
     if (registry.isShuttingDown() || !ctx) return;
     try {
-      if (!ctx.hasUI) return;
+      if (!ctx.hasUI) {
+        lastUi = undefined;
+        return;
+      }
+      const sessionId = ctx.sessionManager.getSessionId();
+      if (lastUi !== ctx.ui || lastUiSessionId !== sessionId) {
+        // Clear the legacy widget once per UI/session, not on every status tick.
+        ctx.ui.setWidget('background-tasks', undefined);
+        lastUi = ctx.ui;
+        lastUiSessionId = sessionId;
+        lastStatus = undefined;
+      }
       const allTasks = registry.allTasks();
       const running = allTasks.filter((task) => task.status === 'running');
       const unseenFailed = allTasks.filter(
@@ -343,7 +357,6 @@ export default function backgroundTasksExtension(pi: ExtensionAPI): void {
       );
       const unseenFinishedCount = unseenFailed.length + unseenStopped.length + unseenDone.length;
       const updateSegment = formatUpdateSegment(latestKnownVersion, PACKAGE_VERSION ?? '');
-      ctx.ui.setWidget('background-tasks', undefined);
       const parts: string[] = [];
       if (running.length === 0 && unseenFinishedCount === 0) parts.push('idle');
       if (running.length > 0) parts.push(`${String(running.length)} running`);
@@ -356,7 +369,11 @@ export default function backgroundTasksExtension(pi: ExtensionAPI): void {
       const segments = [...parts, entryHint];
       if (updateSegment) segments.push(updateSegment);
       const label = ` bg ${segments.join(' · ')} `;
-      ctx.ui.setStatus('background-tasks', ctx.ui.theme.fg('accent', label));
+      const status = ctx.ui.theme.fg('accent', label);
+      if (status !== lastStatus) {
+        ctx.ui.setStatus('background-tasks', status);
+        lastStatus = status;
+      }
     } catch (error) {
       console.error(
         `[background-tasks] UI update failed: ${error instanceof Error ? error.message : String(error)}`,
@@ -503,7 +520,7 @@ export default function backgroundTasksExtension(pi: ExtensionAPI): void {
     },
   );
 
-  async function scheduleUpdateCheck(ctx: ExtensionContext): Promise<void> {
+  async function scheduleUpdateCheck(): Promise<void> {
     if (updateCheckStarted) return;
     updateCheckStarted = true;
     const env = process.env;
@@ -521,11 +538,12 @@ export default function backgroundTasksExtension(pi: ExtensionAPI): void {
     const latest = await fetchLatestVersion(options);
     if (latest && isNewerVersion(latest, PACKAGE_VERSION)) {
       latestKnownVersion = latest;
-      updateUi(ctx);
+      updateUi();
     }
   }
 
   pi.on('session_start', async (_event, ctx) => {
+    lastUi = undefined;
     installExecutionHook();
     const taskCtx = backgroundTaskContext(ctx);
     if (registry.isShuttingDown() || !registry.matchesSession(taskCtx)) {
@@ -572,7 +590,7 @@ export default function backgroundTasksExtension(pi: ExtensionAPI): void {
       updateUi();
     }, STATUS_INTERVAL_MS);
     // One-shot, non-blocking: never awaited on the session-start path or the status tick.
-    void scheduleUpdateCheck(ctx);
+    void scheduleUpdateCheck();
   });
 
   pi.on('session_shutdown', async (event, ctx) => {
@@ -581,6 +599,7 @@ export default function backgroundTasksExtension(pi: ExtensionAPI): void {
     releaseReadyHook?.();
     releaseReadyHook = undefined;
     currentCtx = undefined;
+    lastUi = undefined;
     if (statusInterval) {
       clearInterval(statusInterval);
       statusInterval = undefined;
